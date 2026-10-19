@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""Speicherverwaltung von Kistengeist.
+
+  kistengeist-storage          Fenster mit Belegung, Aufräumen und USB-Auswurf
+  kistengeist-storage --watch  läuft im Hintergrund und warnt bei vollem Speicher
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+import time
+
+sys.path.insert(0, "/opt/kistengeist/lib")
+import kistengeist_storage as st  # noqa: E402
+
+CHECK_INTERVAL = 600  # Sekunden
+REMIND_AFTER = 6 * 3600  # dieselbe Warnung höchstens alle 6 Stunden
+
+
+def zenity(*args: str) -> int:
+    try:
+        return subprocess.call(["zenity", *args], stderr=subprocess.DEVNULL)
+    except FileNotFoundError:
+        return 1
+
+
+def watch() -> int:
+    last_warned: dict[str, float] = {}
+    while True:
+        try:
+            for text in st.warnings(st.list_mounts()):
+                if time.time() - last_warned.get(text.split(" ist ")[0], 0) > REMIND_AFTER:
+                    last_warned[text.split(" ist ")[0]] = time.time()
+                    zenity("--warning", "--width", "380", "--title", "Speicher fast voll",
+                           "--text", text + "\n\nÖffne „Speicher“ in der Leiste zum Aufräumen.")
+        except OSError:
+            pass
+        time.sleep(CHECK_INTERVAL)
+
+
+def browser_running() -> bool:
+    for name in ("chrome", "chromium"):
+        if subprocess.call(["pgrep", "-u", str(os.getuid()), "-x", name],
+                           stdout=subprocess.DEVNULL) == 0:
+            return True
+    return False
+
+
+class App:
+    def __init__(self) -> None:
+        import tkinter as tk
+        from tkinter import messagebox, ttk
+
+        self.tk, self.ttk, self.messagebox = tk, ttk, messagebox
+        self.root = tk.Tk(className="kistengeist-storage")
+        self.root.title("Speicher")
+        self.root.geometry("640x560")
+        self.home = os.path.expanduser("~")
+
+        style = ttk.Style(self.root)
+        style.configure("Warn.Horizontal.TProgressbar", background="#c0392b")
+
+        self.frame = ttk.Frame(self.root, padding=16)
+        self.frame.pack(fill="both", expand=True)
+        self.refresh()
+
+    def clear(self) -> None:
+        for child in self.frame.winfo_children():
+            child.destroy()
+
+    def heading(self, text: str) -> None:
+        self.ttk.Label(self.frame, text=text, font=("Sans", 12, "bold")).pack(anchor="w", pady=(12, 4))
+
+    def bar(self, label: str, used: int, total: int, extra: str = "") -> None:
+        percent = round(used * 100 / total) if total else 0
+        row = self.ttk.Frame(self.frame)
+        row.pack(fill="x", pady=2)
+        self.ttk.Label(row, text=label, width=28).pack(side="left")
+        style = "Warn.Horizontal.TProgressbar" if percent >= st.WARN_PERCENT else "Horizontal.TProgressbar"
+        bar = self.ttk.Progressbar(row, length=220, maximum=100, value=percent, style=style)
+        bar.pack(side="left", padx=8)
+        self.ttk.Label(row, text=f"{percent} %  ({st.human(total - used)} frei){extra}").pack(side="left")
+
+    def refresh(self) -> None:
+        self.clear()
+        mounts = st.list_mounts()
+
+        self.heading("Speicher")
+        for m in mounts:
+            if m.mountpoint.startswith("/boot"):
+                continue
+            self.bar(m.label, m.used, m.total)
+            if m.removable:
+                self.ttk.Button(self.frame, text=f"„{os.path.basename(m.mountpoint)}“ sicher auswerfen",
+                                command=lambda d=m.device: self.eject(d)).pack(anchor="w", padx=4)
+
+        mem = st.memory()
+        self.heading("Arbeitsspeicher")
+        self.bar("RAM", mem["used"], mem["total"])
+        if mem["swap_total"]:
+            self.bar("Auslagerung", mem["swap_used"], mem["swap_total"])
+
+        self.heading("Aufräumen")
+        caches = st.cache_dirs(self.home)
+        cache_size = sum(st.dir_size(c) for c in caches)
+        self.ttk.Button(self.frame, text=f"Browser-Cache leeren ({st.human(cache_size)})",
+                        command=lambda: self.clear_caches(caches)).pack(anchor="w", pady=2)
+        self.ttk.Button(self.frame, text="Paket-Downloads und alte Protokolle löschen",
+                        command=self.clean_system).pack(anchor="w", pady=2)
+        self.ttk.Button(self.frame, text="Größte Ordner anzeigen",
+                        command=self.show_largest).pack(anchor="w", pady=2)
+
+        bottom = self.ttk.Frame(self.frame)
+        bottom.pack(fill="x", side="bottom", pady=(12, 0))
+        self.ttk.Button(bottom, text="Aktualisieren", command=self.refresh).pack(side="left")
+        self.ttk.Button(bottom, text="Schließen", command=self.root.destroy).pack(side="right")
+
+    def eject(self, device: str) -> None:
+        ok = subprocess.call(["udisksctl", "unmount", "-b", device], stderr=subprocess.DEVNULL) == 0
+        if ok:
+            subprocess.call(["udisksctl", "power-off", "-b", st.parent_device(device)],
+                            stderr=subprocess.DEVNULL)
+            self.messagebox.showinfo("Speicher", "Der Stick kann jetzt entfernt werden.")
+        else:
+            self.messagebox.showerror("Speicher", "Auswerfen fehlgeschlagen. Ist noch eine Datei geöffnet?")
+        self.refresh()
+
+    def clear_caches(self, caches: list[str]) -> None:
+        if browser_running():
+            self.messagebox.showwarning("Speicher", "Bitte schließe zuerst den Browser.")
+            return
+        freed = sum(st.clear_dir_contents(c) for c in caches)
+        self.messagebox.showinfo("Speicher", f"{st.human(freed)} freigegeben.")
+        self.refresh()
+
+    def clean_system(self) -> None:
+        helper = "/opt/kistengeist/bin/kistengeist-storage-helper"
+        before = sum(m.free for m in st.list_mounts() if m.mountpoint == "/")
+        failed = False
+        for action in ("clean-apt", "vacuum-journal"):
+            if subprocess.call(["sudo", "-n", helper, action],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) != 0:
+                failed = True
+        after = sum(m.free for m in st.list_mounts() if m.mountpoint == "/")
+        if failed:
+            self.messagebox.showerror("Speicher", "Aufräumen nicht erlaubt oder fehlgeschlagen.")
+        else:
+            self.messagebox.showinfo("Speicher", f"{st.human(max(after - before, 0))} freigegeben.")
+        self.refresh()
+
+    def show_largest(self) -> None:
+        self.root.config(cursor="watch")
+        self.root.update()
+        entries = st.largest_entries(self.home)
+        self.root.config(cursor="")
+        lines = [f"{st.human(size):>10}   {path.replace(self.home, '~', 1)}" for path, size in entries]
+        win = self.tk.Toplevel(self.root)
+        win.title("Größte Ordner in deinem Benutzerordner")
+        text = self.tk.Text(win, width=70, height=14, font=("Monospace", 10))
+        text.insert("1.0", "\n".join(lines) or "Keine Einträge.")
+        text.config(state="disabled")
+        text.pack(padx=12, pady=12)
+        self.ttk.Button(win, text="Ordner öffnen",
+                        command=lambda: subprocess.Popen(["/opt/kistengeist/bin/kistengeist-launch", "files"])
+                        ).pack(pady=(0, 12))
+
+    def run(self) -> None:
+        self.root.mainloop()
+
+
+def main() -> int:
+    if "--watch" in sys.argv[1:]:
+        return watch()
+    App().run()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

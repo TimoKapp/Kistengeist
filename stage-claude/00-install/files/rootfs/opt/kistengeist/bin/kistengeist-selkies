@@ -1,0 +1,39 @@
+#!/bin/bash
+# Desktop im Browser (Selkies): hängt sich an die laufende X-Sitzung (:0) und an PipeWire-Pulse.
+# Läuft als systemd-Benutzerdienst kistengeist-selkies.service; Passwort aus ~/.config/kistengeist/selkies.env.
+set -u
+conf=/etc/kistengeist/selkies.conf
+ENCODER=jpeg
+FRAMERATE=30
+RESIZE=true
+# shellcheck source=/dev/null
+[ -r "$conf" ] && . "$conf"
+
+export DISPLAY="${DISPLAY:-:0}"
+[ -f "$HOME/.Xauthority" ] && export XAUTHORITY="$HOME/.Xauthority"
+# Auf die Sitzung warten (Monitor-Anmeldung bzw. Bildschirm ohne Monitor).
+for _ in $(seq 1 120); do
+    xdpyinfo >/dev/null 2>&1 && break
+    sleep 1
+done
+for _ in $(seq 1 30); do
+    pactl info >/dev/null 2>&1 && break
+    sleep 1
+done
+
+scale="$(python3 /opt/kistengeist/lib/kistengeist_scale.py get 2>/dev/null)"
+dpi=$(( ${scale:-100} * 96 / 100 ))
+
+exec selkies --public --port=8443 \
+    --enable-https=true --https-cert=/etc/ssl/certs/ssl-cert-snakeoil.pem \
+    --https-key=/etc/ssl/private/ssl-cert-snakeoil.key \
+    --basic-auth-user="$(id -un)" \
+    --encoder="$ENCODER" --framerate="$FRAMERATE" --enable-resize="$RESIZE" \
+    --scaling-dpi="$dpi" \
+    --audio-enabled=true --audio-on-start=true \
+    --microphone-enabled=true --microphone-on-start=true \
+    --enable-clipboard=true --gamepad-enabled=false --webcam-enabled=false \
+    --ui-title="Kistengeist" \
+    --file-manager-path="$HOME/Uploads" \
+    --run-after-connect="/opt/kistengeist/bin/kistengeist-selkies-audio connect" \
+    --run-after-disconnect="/opt/kistengeist/bin/kistengeist-selkies-audio disconnect"

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kistengeist</title>
+<style>
+:root { --bg: #f5f4ef; --card: #fff; --text: #1f1e1d; --muted: #6b6862; --line: #e3e0d8; --accent: #c96442; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1f1e1d; --card: #2a2927; --text: #f5f4ef; --muted: #a8a49c; --line: #3d3a36; --accent: #d97757; } }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, sans-serif; }
+main { max-width: 640px; margin: 0 auto; padding: 32px 16px; }
+h1 { margin: 0 0 4px; } p { color: var(--muted); }
+a.card { display: block; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 12px 0; color: var(--text); text-decoration: none; }
+a.card:hover { border-color: var(--accent); } a.card strong { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+<h1><span style="color:var(--accent)">π</span> Kistengeist</h1>
+<p>Dieser Raspberry Pi läuft. Eigene Dateien für diese Seite liegen in <code>/srv/kistengeist-web</code>.</p>
+@LINKS@
+</main>
+</body>
+</html>

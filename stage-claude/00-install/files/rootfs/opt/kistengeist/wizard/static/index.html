@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kistengeist einrichten</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="logo" aria-hidden="true">✳</span> Kistengeist <span class="muted" id="version"></span></div>
+  <ol class="steps" id="steps" aria-label="Fortschritt"></ol>
+</header>
+
+<main>
+  <!-- Einrichtungscode (Schutz gegen andere Geräte im Netz) -->
+  <section class="page" id="code-gate" hidden>
+    <h1>Einrichtungscode</h1>
+    <p class="lead">Damit niemand anderes im Netz deinen Pi einrichten kann, gib bitte den <strong>Einrichtungscode</strong> ein (10 Zeichen). Du findest ihn am Bildschirm des Pi (der QR-Code dort enthält ihn schon), im Fenster des Windows-Werkzeugs bzw. in der Datei <code>Kistengeist-Code.txt</code> auf deinem Desktop oder am Ende der Ausgabe von <code>install.sh</code>.</p>
+    <form class="card" id="code-form">
+      <label>Einrichtungscode <input id="code-input" autocomplete="off" autocapitalize="characters" maxlength="14" placeholder="z. B. K7M2Q9XAPR"></label>
+      <p class="error" id="code-error" role="alert"></p>
+      <div class="actions"><span></span><button type="submit">Weiter</button></div>
+    </form>
+  </section>
+
+  <!-- 1: Willkommen / Netzwerk -->
+  <section class="page" id="page-welcome">
+    <h1>Willkommen</h1>
+    <p class="lead">In wenigen Schritten wird dein Raspberry Pi zu einer Oberfläche für Claude. Die Programme werden während der Installation aus dem Internet geladen.</p>
+    <div class="card notice">
+      <h2>🔌 Bitte jetzt einen USB-Stick einstecken</h2>
+      <p>Um alle Möglichkeiten zu nutzen, ist ein <strong>USB-Stick zwingend erforderlich</strong> (empfohlen: ab 32 GB, USB 3). Darauf landen Sicherungen (z. B. von n8n), Austauschdateien und auf Wunsch die Zugangsdaten. Stecke ihn am besten <strong>sofort</strong> in einen blauen USB-3-Anschluss des Pi – im nächsten Schritt kannst du ihn mit <strong>exFAT</strong> formatieren, damit er auch unter Windows und macOS lesbar ist.</p>
+    </div>
+    <div class="card" id="net-card">
+      <h2>Netzwerk</h2>
+      <p id="net-status">Prüfe Verbindung …</p>
+      <div id="wifi-form" hidden>
+        <p>Der Pi hat noch kein Internet. Wähle dein WLAN:</p>
+        <label>WLAN <select id="wifi-ssid"></select></label>
+        <label>oder Name eingeben <input id="wifi-ssid-manual" autocomplete="off" maxlength="32"></label>
+        <label>WLAN-Passwort <input id="wifi-password" type="password" autocomplete="off" maxlength="63"></label>
+        <button class="secondary" id="wifi-connect">Verbinden</button>
+        <p class="hint" id="wifi-hint"></p>
+      </div>
+    </div>
+    <div class="actions"><span></span><button id="welcome-next">Weiter</button></div>
+  </section>
+
+  <!-- 1b: Rechtliches (Pflicht vor jeder Installation) -->
+  <section class="page" id="page-legal" hidden>
+    <h1 id="legal-title">Rechtliche Hinweise</h1>
+    <p class="lead" id="legal-intro"></p>
+    <div class="card legal-text" id="legal-text" tabindex="0" aria-label="Rechtliche Hinweise"></div>
+    <div class="card" id="legal-checks"></div>
+    <p class="hint" id="legal-version"></p>
+    <div class="actions"><button class="secondary" data-back>Zurück</button><button id="legal-next" disabled>Zustimmen und weiter</button></div>
+  </section>
+
+  <!-- 1c: USB-Stick -->
+  <section class="page" id="page-usb" hidden>
+    <h1>USB-Stick</h1>
+    <p class="lead">Wähle den Stick, den Kistengeist dauerhaft als Datenspeicher nutzen soll. Er wird im Benutzerordner als <code>USB-Stick</code> eingebunden.</p>
+    <div class="card">
+      <div id="usb-list"><p>Suche USB-Sticks …</p></div>
+      <button class="secondary" id="usb-refresh">Erneut suchen</button>
+    </div>
+    <div class="card" id="usb-options" hidden>
+      <h2>Formatieren</h2>
+      <label class="check"><input type="checkbox" id="usb-format" checked>
+        Stick mit <strong>exFAT</strong> formatieren <span class="hint">(empfohlen; lesbar unter Windows, macOS und Linux)</span></label>
+      <label>Bezeichnung des Sticks <input id="usb-label" maxlength="11" value="KISTENGEIST" autocomplete="off"></label>
+      <label class="check danger" id="usb-confirm-row"><input type="checkbox" id="usb-confirm">
+        Ich habe verstanden: <strong>Alle Daten auf diesem Stick werden gelöscht.</strong> Wichtige Dateien habe ich vorher gesichert.</label>
+      <p class="hint">Formatiert wird erst während der Installation, nicht schon jetzt. Das Systemlaufwerk (Speicherkarte) wird hier nie angezeigt.</p>
+    </div>
+    <p class="error" id="usb-error" role="alert"></p>
+    <div class="actions"><button class="secondary" data-back>Zurück</button><button id="usb-next">Weiter</button></div>
+  </section>
+
+  <!-- 2: Zugangsart -->
+  <section class="page" id="page-mode" hidden>
+    <h1>Wie willst du Kistengeist benutzen?</h1>
+    <div class="choices" role="radiogroup" aria-label="Zugangsart">
+      <label class="choice"><input type="radio" name="mode" value="desktop">
+        <strong>Nur Bildschirm</strong><span>Monitor, Tastatur und Maus am Pi.</span></label>
+      <label class="choice"><input type="radio" name="mode" value="rdp">
+        <strong>Nur Fernzugriff</strong><span>Ohne Monitor; Bedienung vom PC, Mac oder Handy aus.</span></label>
+      <label class="choice"><input type="radio" name="mode" value="both" checked>
+        <strong>Beides</strong><span>Monitor am Pi, und aus der Ferne siehst du denselben Bildschirm.</span></label>
+    </div>
+    <div id="remote-choice">
+      <h2>Fernzugriff über</h2>
+      <div class="choices" role="radiogroup" aria-label="Fernzugriff">
+        <label class="choice"><input type="radio" name="remote" value="browser" checked>
+          <strong>Browser (empfohlen)</strong><span>Einfach <code>https://kistengeist.local:8443</code> in Chrome, Edge oder Firefox öffnen – keine Zusatzsoftware. Ton und Mikrofon laufen über den Browser.</span></label>
+        <label class="choice"><input type="radio" name="remote" value="rdp">
+          <strong>Remotedesktop (RDP)</strong><span>Mit „Remotedesktopverbindung“ (Windows) bzw. „Windows App“ (Mac, Handy).</span></label>
+      </div>
+    </div>
+    <div class="actions"><button class="secondary" data-back>Zurück</button><button data-next>Weiter</button></div>
+  </section>
+
+  <!-- 3: Module -->
+  <section class="page" id="page-modules" hidden>
+    <h1>Module</h1>
+    <p class="lead">Grau hinterlegte Module sind für deine Zugangsart nötig. Alles andere kannst du an- oder abwählen.</p>
+    <div id="module-list"></div>
+    <div class="actions"><button class="secondary" data-back>Zurück</button><button data-next>Weiter</button></div>
+  </section>
+
+  <!-- 3b: Internet, Webserver und n8n -->
+  <section class="page" id="page-internet" hidden>
+    <h1>Internet und n8n</h1>
+    <p class="lead">Hier richtest du ein, wie der Pi aus dem Internet erreichbar ist und mit welchem Konto n8n startet. Nimm dir 10 Minuten Zeit – wir gehen Schritt für Schritt vor.</p>
+
+    <div class="card" id="inet-web">
+      <h2>1. Erreichbarkeit</h2>
+      <div class="choices" role="radiogroup" aria-label="Erreichbarkeit">
+        <label class="choice"><input type="radio" name="net" value="dyndns" checked>
+          <strong>Aus dem Internet – kostenlose eigene Adresse (DynDNS)</strong><span>z. B. https://meinpi.ipv64.net mit echtem HTTPS-Zertifikat. Anbieter wählbar: ipv64.net, dynv6, No-IP oder DuckDNS. Am Router werden die Ports 80 und 443 freigegeben (Anleitung unten und in der Zugangsdaten-Datei).</span></label>
+        <label class="choice"><input type="radio" name="net" value="tailscale">
+          <strong>Aus dem Internet – Tailscale Funnel</strong><span>Ohne Portfreigabe; funktioniert auch bei DS-Lite (z. B. Vodafone Kabel, viele Glasfaseranschlüsse). Kostenloses Tailscale-Konto nötig.</span></label>
+        <label class="choice"><input type="radio" name="net" value="lan">
+          <strong>Nur im Heimnetz</strong><span>Nichts wird nach außen geöffnet. Webhooks aus dem Internet funktionieren dann nicht.</span></label>
+      </div>
+
+      <div id="guide-dyndns">
+        <h2>Welcher Anbieter?</h2>
+        <div class="choices" role="radiogroup" aria-label="DynDNS-Anbieter">
+          <label class="choice"><input type="radio" name="ddns" value="ipv64" checked>
+            <strong>ipv64.net (empfohlen)</strong><span>Deutscher Anbieter, Konto mit E-Mail. Gratis 3 Adressen, z. B. meinpi.ipv64.net oder meinpi.home64.de.</span></label>
+          <label class="choice"><input type="radio" name="ddns" value="dynv6">
+            <strong>dynv6</strong><span>Komplett kostenlos, Konto mit E-Mail, gute IPv6-Unterstützung. Z. B. meinpi.dynv6.net.</span></label>
+          <label class="choice"><input type="radio" name="ddns" value="noip">
+            <strong>No-IP</strong><span>Gratis 1 Adresse, z. B. meinpi.ddns.net. Achtung: Die Gratis-Adresse muss alle 30 Tage per E-Mail-Link bestätigt werden.</span></label>
+          <label class="choice"><input type="radio" name="ddns" value="duckdns">
+            <strong>DuckDNS</strong><span>Anmeldung mit Google, GitHub, X oder Reddit. Z. B. meinpi.duckdns.org.</span></label>
+        </div>
+
+        <div class="ddns-guide" id="guide-ipv64">
+          <h2>So bekommst du deine Adresse bei ipv64.net</h2>
+          <ol class="steps-guide">
+            <li>Öffne auf deinem PC oder Handy <a href="https://ipv64.net/account" target="_blank" rel="noopener">ipv64.net/account</a>, lege ein kostenloses Konto an und bestätige die E-Mail von ipv64.</li>
+            <li>Öffne oben das Menü <strong>„DynDNS“</strong>, gib einen Wunschnamen ein (z. B. <code>meinpi</code>), wähle dahinter eine Domain (z. B. <code>ipv64.net</code> oder <code>home64.de</code>) und lege die Adresse an.</li>
+            <li>Klicke in der Liste auf deine neue Adresse. In ihren Einstellungen steht der <strong>„Domain Update Token“</strong> – kopiere ihn (der „Account Update Token“ geht auch).</li>
+            <li>Trage unten die komplette Adresse (z. B. <code>meinpi.ipv64.net</code>) und den Token ein und klicke <strong>„Prüfen“</strong>.</li>
+          </ol>
+          <p class="hint">Gratis-Konten haben ein Tageslimit für Aktualisierungen. Der Pi meldet sich deshalb nur, wenn sich deine Internet-Adresse ändert (und einmal am Tag) – das reicht locker.</p>
+        </div>
+        <div class="ddns-guide" id="guide-dynv6" hidden>
+          <h2>So bekommst du deine Adresse bei dynv6</h2>
+          <ol class="steps-guide">
+            <li>Öffne <a href="https://dynv6.com" target="_blank" rel="noopener">dynv6.com</a>, klicke <strong>„Sign up“</strong>, lege mit E-Mail und Passwort ein Konto an und bestätige die E-Mail.</li>
+            <li>Gib auf der Startseite einen Wunschnamen ein (z. B. <code>meinpi</code>), wähle die Domain (z. B. <code>dynv6.net</code>) und klicke <strong>„Go!“</strong>. Die Adresse steht dann unter <strong>„My Zones“</strong>.</li>
+            <li>Öffne oben rechts dein Konto-Menü › <strong>„Keys“</strong>. Bei den <strong>HTTP Tokens</strong> auf „Details“ klicken und den Token kopieren.</li>
+            <li>Trage unten die komplette Adresse (z. B. <code>meinpi.dynv6.net</code>) und den Token ein und klicke <strong>„Prüfen“</strong>.</li>
+          </ol>
+        </div>
+        <div class="ddns-guide" id="guide-noip" hidden>
+          <h2>So bekommst du deine Adresse bei No-IP</h2>
+          <ol class="steps-guide">
+            <li>Öffne <a href="https://www.noip.com/sign-up" target="_blank" rel="noopener">noip.com</a>, wähle das kostenlose Konto (<strong>„Free“</strong>) und bestätige die E-Mail von No-IP.</li>
+            <li>Gehe im Konto zu <strong>„DDNS &amp; Remote Access“ › „No-IP Hostnames“</strong> › <strong>„Create Hostname“</strong>. Wunschnamen eingeben (z. B. <code>meinpi</code>), eine Gratis-Domain wählen (z. B. <code>ddns.net</code>), Typ „A“ lassen (bei DS-Lite stattdessen „AAAA“ / IPv6 wählen), „Dynamic DNS“ aktivieren.</li>
+            <li>Klicke <strong>„Create With DDNS Key“</strong> (oder später bei der Adresse auf „DDNS Key“) › <strong>„Generate DDNS Key“</strong>. Es erscheinen ein <strong>Benutzername</strong> und ein <strong>Passwort</strong> – nur dieses eine Mal. Beides kopieren.</li>
+            <li>Trage unten die komplette Adresse (z. B. <code>meinpi.ddns.net</code>), Benutzername und Passwort des DDNS-Keys ein und klicke <strong>„Prüfen“</strong>.</li>
+          </ol>
+          <p class="hint"><strong>Wichtig:</strong> No-IP schickt alle 30 Tage eine E-Mail „Confirm your hostname“. Klicke darin auf den Link – sonst schaltet No-IP die Gratis-Adresse ab. Das kann der Pi nicht für dich erledigen; ohne diese Pflicht: ipv64.net oder dynv6.</p>
+        </div>
+        <div class="ddns-guide" id="guide-duckdns" hidden>
+          <h2>So bekommst du deine DuckDNS-Adresse</h2>
+          <ol class="steps-guide">
+            <li>Öffne auf deinem PC oder Handy <a href="https://www.duckdns.org" target="_blank" rel="noopener">www.duckdns.org</a> und melde dich oben rechts an – mit einem bestehenden Konto bei Google, GitHub, X (Twitter) oder Reddit. Ein eigenes Passwort für DuckDNS brauchst du nicht.</li>
+            <li>Gib unter <strong>„domains“</strong> einen Wunschnamen ein (z. B. <code>meinpi</code>) und klicke <strong>„add domain“</strong>. Ist der Name vergeben, wähle einen anderen.</li>
+            <li>Kopiere oben auf der Seite den <strong>„token“</strong> (sieht aus wie <code>a1b2c3d4-…</code>).</li>
+            <li>Trage unten die Adresse (z. B. <code>meinpi.duckdns.org</code>) und den Token ein und klicke <strong>„Prüfen“</strong>.</li>
+          </ol>
+        </div>
+
+        <label>Deine Adresse <input id="ddns-host" autocomplete="off" placeholder="meinpi.ipv64.net" maxlength="253"></label>
+        <label id="ddns-token-row">Token <input id="ddns-token" autocomplete="off" placeholder="Token hier einfügen" maxlength="200"></label>
+        <div id="ddns-key-rows" hidden>
+          <label>Benutzername des DDNS-Keys <input id="ddns-user" autocomplete="off" maxlength="128"></label>
+          <label>Passwort des DDNS-Keys <input id="ddns-pass" type="password" autocomplete="off" maxlength="128"></label>
+        </div>
+        <button class="secondary" id="ddns-test">Prüfen</button>
+        <p class="hint" id="ddns-result" aria-live="polite"></p>
+        <label class="check"><input type="checkbox" id="ddns-v6">
+          Mein Anschluss ist DS-Lite – nur die IPv6-Adresse eintragen <span class="hint">(dann von außen nur über IPv6 erreichbar; bei ipv64 und No-IP bleibt eine alte IPv4 beim Anbieter stehen – dort im Konto löschen bzw. bei No-IP den Typ „AAAA“ nehmen)</span></label>
+        <h2>Danach am Router (FRITZ!Box)</h2>
+        <ol class="steps-guide">
+          <li>Öffne <code>http://fritz.box</code> und melde dich an.</li>
+          <li><strong>Heimnetz › Netzwerk</strong> › beim Gerät <code>kistengeist</code> auf „Bearbeiten“ › <strong>„IPv4-Adresse dauerhaft zuweisen“</strong> (ältere Versionen: „Diesem Netzwerkgerät immer die gleiche IPv4-Adresse zuweisen“).</li>
+          <li><strong>Internet › Freigaben › Portfreigaben</strong> › „Gerät für Freigaben hinzufügen“ › Gerät <code>kistengeist</code>.</li>
+          <li>„Neue Freigabe“ › „Portfreigabe“ › „Andere Anwendung“, TCP, Port <strong>80</strong> (an Gerät, bis Port und extern gleich) – dann dasselbe für <strong>443</strong>. Bei beiden Freigaben das Häkchen <strong>„Freigabe aktivieren für IPv4“ und „… für IPv6“</strong> setzen (der Pi trägt auch seine IPv6-Adresse ein). „Übernehmen“.</li>
+          <li>DS-Lite prüfen: <strong>Internet › Online-Monitor › Verbindungsdetails</strong>. Fehlt eine öffentliche IPv4 (oder steht dort 100.64.x.x / 192.0.0.x), nutze oben „DS-Lite“ oder „Tailscale Funnel“.</li>
+        </ol>
+        <p class="hint">Das kannst du auch nach der Installation erledigen – alles steht zusätzlich in der Datei <code>Zugangsdaten.txt</code>. Das HTTPS-Zertifikat holt der Pi automatisch, sobald die Freigaben aktiv sind.</p>
+        <label>E-Mail für das HTTPS-Zertifikat (optional) <input id="acme-email" type="email" autocomplete="email" placeholder="du@example.com"></label>
+        <p class="hint">Let's Encrypt schreibt nur bei Problemen mit dem Zertifikat. Hinweis: Zertifikate und damit deine Adresse werden öffentlich protokolliert.</p>
+      </div>
+
+      <div id="guide-tailscale" hidden>
+        <h2>So richtest du Tailscale Funnel ein</h2>
+        <ol class="steps-guide">
+          <li>Öffne <a href="https://login.tailscale.com/start" target="_blank" rel="noopener">login.tailscale.com</a> und lege ein kostenloses Konto an (Anmeldung z. B. mit Google, Microsoft, GitHub oder Apple).</li>
+          <li>In der Verwaltung unter <strong>DNS</strong>: „MagicDNS“ und <strong>„HTTPS Certificates“</strong> aktivieren.</li>
+          <li>Unter <strong>Access controls</strong> Funnel erlauben (Tailscale schlägt die passende Ergänzung „funnel“ meist selbst vor).</li>
+          <li>Unter <strong>Settings › Keys › Generate auth key</strong> einen Schlüssel erzeugen und hier einfügen (beginnt mit <code>tskey-</code>).</li>
+        </ol>
+        <label>Tailscale-Schlüssel <input id="ts-key" autocomplete="off" placeholder="tskey-auth-…"></label>
+        <p class="hint">Der Schlüssel wird nur einmal zum Anmelden genutzt und danach gelöscht. Deine Adresse lautet später <code>https://kistengeist.&lt;dein-tailnet&gt;.ts.net</code>.</p>
+      </div>
+    </div>
+
+    <div class="card" id="inet-n8n">
+      <h2>2. Dein n8n-Konto</h2>
+      <p>Mit diesen Angaben legt der Pi dein n8n-Besitzerkonto automatisch an. Damit meldest du dich später bei n8n an. Die Daten bleiben auf dem Pi.</p>
+      <label>Vorname <input id="n8n-first" autocomplete="given-name" maxlength="50"></label>
+      <label>Nachname <input id="n8n-last" autocomplete="family-name" maxlength="50"></label>
+      <label>E-Mail (Anmeldename) <input id="n8n-email" type="email" autocomplete="email"></label>
+      <label>Passwort <input id="n8n-pw1" type="password" autocomplete="new-password" maxlength="64"></label>
+      <label>Passwort wiederholen <input id="n8n-pw2" type="password" autocomplete="new-password" maxlength="64"></label>
+      <p class="hint">8–64 Zeichen, mindestens eine Ziffer und ein Großbuchstabe (Regel von n8n). Nutze ein eigenes Passwort – n8n ist ggf. aus dem Internet erreichbar.</p>
+      <details>
+        <summary>Optional: kostenloser n8n-Lizenzschlüssel</summary>
+        <ol class="steps-guide">
+          <li>Den kostenlosen Schlüssel der „Community Edition“ schaltet zusätzliche Funktionen frei (Ordner, Debug im Editor, eigene Ausführungsdaten).</li>
+          <li>Nach der Installation in n8n: <strong>Einstellungen › Usage and plan › Unlock</strong> › E-Mail angeben › „Send me a free license key“ – oder, falls du schon einen Schlüssel hast, hier eintragen.</li>
+        </ol>
+        <label>Lizenzschlüssel (optional) <input id="n8n-license" autocomplete="off"></label>
+      </details>
+      <p class="hint">Claude bekommt automatisch Zugang zu n8n über MCP (in Claude Code mit <code>/mcp</code> › n8n einmal anmelden). Der MCP-Zugang ist eingeschaltet; welche Workflows Claude nutzen darf, gibst du je Workflow frei (Workflow › „…“ › Settings › „Available in MCP“).</p>
+    </div>
+
+    <div class="card">
+      <h2>3. Zugangsdaten-Datei</h2>
+      <p>Am Ende schreibt der Pi <code>Zugangsdaten.txt</code> in deinen Benutzerordner: Adressen, alle Ports (mit Hinweis, was am Router freizugeben ist) und deine Logins.</p>
+      <label class="check"><input type="checkbox" id="file-secrets" checked>
+        Passwörter und Token mit in die Datei schreiben <span class="hint">(bequem, aber jeder mit Zugriff auf die Datei kennt sie dann)</span></label>
+      <label class="check"><input type="checkbox" id="file-usb">
+        Zusätzlich eine Kopie auf den USB-Stick legen <span class="hint">(Achtung: der Stick ist unverschlüsselt)</span></label>
+    </div>
+    <p class="error" id="internet-error" role="alert"></p>
+    <div class="actions"><button class="secondary" data-back>Zurück</button><button id="internet-next">Weiter</button></div>
+  </section>
+
+  <!-- 4: Konto und Region -->
+  <section class="page" id="page-account" hidden>
+    <h1>Konto und Region</h1>
+    <div class="card">
+      <h2>Passwort für Benutzer <code id="user-name">claude</code></h2>
+      <p class="hint">Für die Anmeldung am Pi und per RDP. Es wird nicht gespeichert, sondern direkt im System gesetzt.</p>
+      <label>Passwort <input id="pw1" type="password" autocomplete="new-password"></label>
+      <label>Wiederholen <input id="pw2" type="password" autocomplete="new-password"></label>
+      <p class="hint" id="pw-note"></p>
+      <div id="browser-pw-row" hidden>
+        <h2>Passwort für den Browser-Zugang</h2>
+        <p class="hint">Damit meldest du dich unter https://kistengeist.local:8443 an. Bitte ein anderes Passwort als oben
+          wählen – das obige Passwort hat Verwaltungsrechte und wird nirgends gespeichert.</p>
+        <label>Browser-Passwort <input id="bpw1" type="password" autocomplete="new-password"></label>
+        <label>Wiederholen <input id="bpw2" type="password" autocomplete="new-password"></label>
+      </div>
+      <label class="check"><input type="checkbox" id="privacy-minimal" checked>
+        Datensparsam: Fehlerberichte und Umfragen von Claude Code abschalten <span class="hint">(Remote Control bleibt nutzbar)</span></label>
+      <label class="check" id="autologin-row"><input type="checkbox" id="autologin" checked>
+        Am Bildschirm automatisch anmelden <span class="hint">(bequem; dann ist der Schlüsselbund nicht durch ein Passwort geschützt)</span></label>
+    </div>
+    <div class="card">
+      <h2>Region</h2>
+      <label>Sprache <select id="locale"></select></label>
+      <label>Tastatur <select id="keymap"></select></label>
+      <label>Zeitzone <select id="timezone"></select></label>
+    </div>
+    <p class="error" id="account-error" role="alert"></p>
+    <div class="actions"><button class="secondary" data-back>Zurück</button><button id="account-next">Weiter</button></div>
+  </section>
+
+  <!-- 5: Zusammenfassung -->
+  <section class="page" id="page-summary" hidden>
+    <h1>Zusammenfassung</h1>
+    <div class="card" id="summary"></div>
+    <p class="hint">Die Installation dauert je nach Internet 15–40 Minuten. Der Pi muss dabei eingeschaltet und online bleiben.</p>
+    <p class="error" id="install-error" role="alert"></p>
+    <div class="actions"><button class="secondary" data-back>Zurück</button><button id="install">Installieren</button></div>
+  </section>
+
+  <!-- 6: Fortschritt -->
+  <section class="page" id="page-progress" hidden>
+    <h1 id="progress-title">Installation läuft …</h1>
+    <div class="progress" aria-hidden="true"><div class="bar" id="bar"></div></div>
+    <p id="progress-text" aria-live="polite">Starte …</p>
+    <p class="error" id="progress-error" role="alert"></p>
+    <details><summary>Protokoll anzeigen</summary><pre id="log"></pre></details>
+    <div class="actions"><button class="secondary" id="restart" hidden>Zurück zur Auswahl</button><button id="retry" hidden>Erneut versuchen</button></div>
+  </section>
+
+  <!-- 7: Fertig -->
+  <section class="page" id="page-done" hidden>
+    <h1>Fertig!</h1>
+    <p class="lead">Kistengeist ist eingerichtet. Nach dem Neustart startet Claude automatisch.</p>
+    <div class="card" id="done-info"></div>
+    <div class="actions"><span></span><button id="reboot">Jetzt neu starten</button></div>
+  </section>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>

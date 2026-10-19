@@ -1,0 +1,61 @@
+#!/bin/bash
+# Verwaltung von n8n (läuft als root über systemd):
+#   kistengeist-n8n update   – neues Image laden und neu starten (wöchentlicher Timer)
+#   kistengeist-n8n backup   – Workflows/Zugangsdaten exportieren und auf den USB-Stick kopieren
+#   kistengeist-n8n firewall – Port 5678 nur aus privaten Netzen (Docker umgeht ufw)
+set -u
+dir=/srv/n8n
+compose=(docker compose --project-directory "$dir" -f "$dir/docker-compose.yml")
+
+case "${1:-}" in
+    update)
+        "${compose[@]}" pull --quiet && "${compose[@]}" up -d --remove-orphans && docker image prune -f >/dev/null
+        ;;
+    backup)
+        stamp="$(date +%Y-%m-%d)"
+        out="$dir/backup/$stamp"
+        mkdir -p "$out"
+        chown 1000:1000 "$dir/backup" "$out"
+        chmod 0700 "$dir/backup"
+        # Zugangsdaten bleiben verschlüsselt. Der Schlüssel (data/config) wird nur lokal gesichert,
+        # nicht auf den unverschlüsselten Stick – sonst könnte jeder mit dem Stick alles entschlüsseln.
+        # Eine frische Installation hat noch keine Workflows/Zugangsdaten: das ist kein Fehler
+        # (n8n meldet dann „No workflows found“ und endet mit Fehlercode – in der CI gefunden).
+        export_kind() {
+            local out
+            if ! out="$("${compose[@]}" exec -T n8n n8n "export:$1" --all --output="/home/node/backup/$stamp/$2" 2>&1)"; then
+                case "$out" in
+                    *"No workflows found"* | *"No credentials found"*) echo "Keine $1-Einträge – übersprungen." ;;
+                    *) echo "$out" >&2; return 1 ;;
+                esac
+            fi
+        }
+        export_kind workflow workflows.json || exit 1
+        export_kind credentials credentials.json || exit 1
+        cp "$dir/data/config" "$out/config" 2>/dev/null || true
+        # Nur die letzten 14 Sicherungen behalten.
+        find "$dir/backup" -mindepth 1 -maxdepth 1 -type d | sort | head -n -14 | xargs -r rm -rf
+        ls /mnt/usb-stick >/dev/null 2>&1 || true   # löst das automatische Einhängen aus
+        if mountpoint -q /mnt/usb-stick; then
+            mkdir -p "/mnt/usb-stick/Sicherungen/n8n/$stamp"
+            for f in workflows.json credentials.json; do
+                [ -f "$out/$f" ] && cp "$out/$f" "/mnt/usb-stick/Sicherungen/n8n/$stamp/"
+            done
+            find /mnt/usb-stick/Sicherungen/n8n -mindepth 1 -maxdepth 1 -type d | sort | head -n -14 | xargs -r rm -rf
+        fi
+        ;;
+    firewall)
+        # Eigene Kette: erlaubt private Netze, verwirft den Rest; Sprung aus DOCKER-USER (idempotent).
+        iptables -N KISTENGEIST-N8N 2>/dev/null || iptables -F KISTENGEIST-N8N
+        for net in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.0/8; do
+            iptables -A KISTENGEIST-N8N -s "$net" -j RETURN
+        done
+        iptables -A KISTENGEIST-N8N -j DROP
+        rule=(DOCKER-USER -p tcp -m conntrack --ctorigdstport 5678 --ctdir ORIGINAL -j KISTENGEIST-N8N)
+        iptables -C "${rule[@]}" 2>/dev/null || iptables -I "${rule[@]}"
+        ;;
+    *)
+        echo "Aufruf: $0 update|backup|firewall" >&2
+        exit 2
+        ;;
+esac

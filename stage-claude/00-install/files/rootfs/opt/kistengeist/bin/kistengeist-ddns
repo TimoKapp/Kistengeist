@@ -1,0 +1,15 @@
+#!/bin/bash
+# Meldet die öffentliche Adresse an den gewählten DynDNS-Anbieter (ipv64, dynv6, No-IP, DuckDNS).
+# Läuft per Timer alle 5 Minuten, meldet aber nur bei Änderung (und einmal täglich).
+#   kistengeist-ddns           normale Runde
+#   kistengeist-ddns --force   sofort melden (auch nach einer Sperre wegen falscher Zugangsdaten)
+#   kistengeist-ddns status    letztes Ergebnis anzeigen
+if [ "${1:-}" = "status" ]; then
+    cat /run/kistengeist/ddns.status 2>/dev/null || echo "Noch keine Aktualisierung gelaufen."
+    exit 0
+fi
+if [ "$(id -u)" != 0 ]; then
+    echo "Bitte mit sudo aufrufen: sudo kistengeist-ddns $*" >&2
+    exit 1
+fi
+exec python3 /opt/kistengeist/lib/kistengeist_ddns.py "$@"

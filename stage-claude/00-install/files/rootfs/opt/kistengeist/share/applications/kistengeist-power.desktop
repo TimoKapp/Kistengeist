@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Ausschalten
+Exec=/opt/kistengeist/bin/kistengeist-launch power
+Icon=system-shutdown
+Terminal=false

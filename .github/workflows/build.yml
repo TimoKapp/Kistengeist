@@ -1,0 +1,289 @@
+name: Prüfen und Image bauen
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      build_image:
+        description: "Image bauen (dauert ca. 30–60 Minuten)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests und Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Werkzeuge installieren
+        run: pip install pytest==8.3.3 ruff==0.6.9
+      - name: Python-Lint
+        run: ruff check .
+      - name: Shell-Lint
+        run: |
+          mapfile -t scripts < <(grep -rlE '^#!/bin/bash|shell=bash' stage-claude)
+          shellcheck -x -S warning "${scripts[@]}" install.sh tools/ci_installer.sh tools/ci_installer_inner.sh
+      - name: Tests (inkl. Installer-Probelauf aller Zugangsarten)
+        run: pytest -q
+
+  ddns-live:
+    # Echter Gegentest der vier DynDNS-APIs mit falschen Zugangsdaten. Hängt von Fremddiensten ab:
+    # meldet Abweichungen sichtbar, blockiert aber das Image nicht.
+    name: DynDNS-Anbieter echt ansprechen
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tools/ci_ddns_live.py || { sleep 60; python3 tools/ci_ddns_live.py; }
+
+  packages:
+    # Wie Raspberry Pi OS Lite (Debian 13 + Raspberry-Pi-Archiv, arm64): alle Modulpakete ohne
+    # Empfehlungen, Module mit Fremdquellen echt ausführen, Befehle/Dateien/Bibliotheken prüfen.
+    # (So fiel z. B. auf, dass docker-cli bei docker.io nur empfohlen ist.)
+    name: Pakete und Module wie auf dem Pi (arm64)
+    runs-on: ubuntu-24.04-arm
+    container: debian:trixie
+    steps:
+      - uses: actions/checkout@v4
+      - name: Installieren und prüfen
+        run: bash tools/ci_real_modules.sh
+
+  n8n:
+    # n8n wirklich starten – mit Debians Docker wie auf dem Pi (arm64): Konto, Anmeldung,
+    # Neustart, Sicherung, Firewall.
+    name: n8n echt testen (Debian-Docker, arm64)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: n8n mit den Dateien des Moduls in Debian 13 starten und prüfen
+        run: |
+          sudo mkdir -p /tmp/dind
+          docker run --privileged --rm -v "$PWD:/repo" -v /tmp/dind:/var/lib/docker -w /repo \
+            debian:trixie bash tools/ci_n8n_dind.sh
+
+  browser:
+    # Desktop im Browser echt: Modul installiert Selkies, Chromium-Client mit Mikrofon verbindet sich.
+    name: Desktop im Browser echt testen (arm64)
+    runs-on: ubuntu-24.04-arm
+    container: debian:trixie
+    steps:
+      - uses: actions/checkout@v4
+      - name: Modul installieren, Browser verbinden, Ton/Mikrofon/Größe prüfen
+        run: bash tools/ci_browser_e2e.sh
+
+  browser-systemd:
+    # Dieselbe Einrichtung mit echtem systemd: linger, Benutzerdienste, Passwortdatei, Oberfläche im Dienst.
+    name: Browser-Zugang mit systemd testen (arm64)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: systemd-Container starten und Dienste prüfen
+        run: bash tools/ci_browser_systemd.sh
+
+  installer:
+    # Ein-Befehl-Installer (install.sh) echt mit systemd: Schutzprüfungen, Prüfsumme, Assistent startet.
+    name: Ein-Befehl-Installer testen (arm64)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: install.sh in Debian 13 mit systemd ausführen
+        run: bash tools/ci_installer.sh
+
+  windows:
+    # Windows-Werkzeug echt: Imager installieren, Raspberry Pi OS laden, virtuelles Laufwerk schreiben.
+    name: Windows-Werkzeug echt testen
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Testbetrieb und Schreiben auf ein virtuelles Laufwerk
+        shell: powershell
+        run: ./tools/ci_windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kistengeist-cloudinit
+          path: ${{ runner.temp }}/kg-test/
+
+  cloudinit:
+    # Die geschriebenen Ersteinrichtungsdateien mit cloud-init und Netplan aus Debian 13 prüfen.
+    name: Ersteinrichtung (cloud-init) prüfen
+    needs: windows
+    runs-on: ubuntu-24.04-arm
+    container: debian:trixie
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: kistengeist-cloudinit
+          path: ci-cloudinit
+      - name: cloud-init-Schema, Netplan, Erststart-Skript
+        run: bash tools/ci_cloudinit_check.sh ci-cloudinit
+
+  image:
+    name: Image für Raspberry Pi 4 bauen
+    needs: [test, packages, n8n, browser, browser-systemd, installer, windows, cloudinit]
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.build_image)
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version festlegen
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="$GITHUB_REF_NAME"
+          else
+            version="dev-${GITHUB_SHA::7}"
+          fi
+          echo "$version" > stage-claude/00-install/files/rootfs/opt/kistengeist/VERSION
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Zufälliges Build-Passwort (wird im Image gesperrt)
+        id: pw
+        run: |
+          pw="$(openssl rand -hex 24)"
+          echo "::add-mask::$pw"
+          echo "pw=$pw" >> "$GITHUB_OUTPUT"
+
+      - name: Image mit pi-gen bauen
+        id: build
+        uses: usimd/pi-gen-action@v1
+        with:
+          image-name: kistengeist
+          pi-gen-version: arm64
+          release: trixie
+          stage-list: stage0 stage1 stage2 ${{ github.workspace }}/stage-claude
+          hostname: kistengeist
+          username: claude
+          password: ${{ steps.pw.outputs.pw }}
+          disable-first-boot-user-rename: 1
+          enable-ssh: 0
+          locale: de_DE.UTF-8
+          keyboard-keymap: de
+          keyboard-layout: German
+          timezone: Europe/Berlin
+          wpa-country: DE
+          # .img.xz ist das Format, das Raspberry Pi Imager direkt schreibt (wie die offiziellen Images).
+          compression: xz
+          compression-level: 6
+          # Aufräum-Option scheitert auf ARM-Runnern (fehlende Pakete); Platz reicht ohne.
+          increase-runner-disk-size: false
+          verbose-output: true
+
+      - name: Image benennen und Imager-Datei erzeugen
+        id: files
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          IMAGE: ${{ steps.build.outputs.image-path }}
+        run: |
+          mkdir -p out
+          img="out/kistengeist-${VERSION}.img.xz"
+          if [ -d "$IMAGE" ]; then
+            IMAGE="$(find "$IMAGE" -name '*.img.xz' | head -n 1)"
+          fi
+          [ -f "$IMAGE" ] || { echo "Kein Image gefunden"; exit 1; }
+          cp "$IMAGE" "$img"
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}/$(basename "$img")"
+          python3 tools/make_imager_json.py --image "$img" --url "$url" \
+            --version "$VERSION" --out out/kistengeist-imager.json
+          (cd out && sha256sum ./*.img.xz > SHA256SUMS)
+          echo "image=$img" >> "$GITHUB_OUTPUT"
+          ls -la out
+
+      - name: Image prüfen (startet es in den Einrichtungs-Assistenten?)
+        env:
+          IMG: ${{ steps.files.outputs.image }}
+        run: |
+          set -euo pipefail
+          xz -t "$IMG"
+          xz -dc "$IMG" > /tmp/check.img
+          loop="$(sudo losetup -fP --show /tmp/check.img)"
+          sudo mkdir -p /mnt/boot /mnt/root
+          sudo mount -o ro "${loop}p1" /mnt/boot
+          sudo mount -o ro "${loop}p2" /mnt/root
+          fail() { echo "::error::$1"; exit 1; }
+          r=/mnt/root
+          [ -f /mnt/boot/kernel8.img ] || fail "Kernel für Pi 4 (kernel8.img) fehlt"
+          [ -f /mnt/boot/cmdline.txt ] || fail "cmdline.txt fehlt"
+          ls /mnt/boot/bcm2711-rpi-4-b.dtb >/dev/null || fail "Device-Tree für Pi 4 fehlt"
+          for u in kistengeist-setup kistengeist-console kistengeist-hotspot; do
+            [ -L "$r/etc/systemd/system/multi-user.target.wants/$u.service" ] || fail "$u.service nicht aktiviert"
+          done
+          [ "$(readlink "$r/etc/systemd/system/default.target")" = /usr/lib/systemd/system/multi-user.target ] \
+            || [ "$(readlink "$r/etc/systemd/system/default.target")" = /lib/systemd/system/multi-user.target ] \
+            || fail "Standardziel ist nicht multi-user.target"
+          [ ! -e "$r/etc/kistengeist/installed" ] || fail "Image ist schon als installiert markiert"
+          [ -x "$r/opt/kistengeist/wizard/server.py" ] || fail "Setup-Assistent fehlt"
+          [ -x "$r/opt/kistengeist/bin/kistengeist-install" ] || fail "Installer fehlt"
+          grep -q '^claude:' "$r/etc/passwd" || fail "Benutzer claude fehlt"
+          sudo grep -q '^claude:!' "$r/etc/shadow" || fail "Passwort von claude ist nicht gesperrt"
+          [ -x "$r/usr/bin/python3" ] || fail "python3 fehlt"
+          # Runner und Image sind beide arm64: der Assistent lässt sich im Image selbst laden.
+          sudo chroot "$r" /usr/bin/python3 -c "import sys; sys.path.insert(0, '/opt/kistengeist/wizard'); import server" \
+            || fail "Setup-Assistent lässt sich im Image nicht laden"
+          echo "Image-Prüfung bestanden: $(du -h "$IMG" | cut -f1) komprimiert, $(du -h /tmp/check.img | cut -f1) entpackt"
+          sudo umount /mnt/boot /mnt/root
+          sudo losetup -d "$loop"
+          rm -f /tmp/check.img
+
+      # Ein-Befehl-Installer zu genau diesem Stand: Quellarchiv als Release-Datei, Installer mit
+      # festgelegter Version, Adresse und Prüfsumme (curl -fsSL …/install.sh | sudo bash).
+      - name: Installer und Quellarchiv für das Release
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          src="kistengeist-src-${VERSION}.tar.gz"
+          git archive --format=tar.gz --prefix="kistengeist-${VERSION}/" -o "out/$src" HEAD
+          sha="$(sha256sum "out/$src" | cut -d' ' -f1)"
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}/${src}"
+          {
+            head -n 1 install.sh
+            printf ': "${KG_REF:=%s}" "${KG_ARCHIVE_URL:=%s}" "${KG_SHA256:=%s}"\n' "$VERSION" "$url" "$sha"
+            tail -n +2 install.sh
+          } > out/install.sh
+          bash -n out/install.sh
+          # Windows-Werkzeug auf genau diesen Installer festlegen (Zeilenenden CRLF erhalten).
+          python3 - "$VERSION" "$GITHUB_REPOSITORY" <<'PY'
+          import sys
+          version, repo = sys.argv[1], sys.argv[2]
+          src = open("windows/Kistengeist-Installer.cmd", "rb").read().decode("utf-8")
+          old = "$KgInstallUrl = 'https://raw.githubusercontent.com/TimoKapp/kistengeist/main/install.sh'"
+          assert old in src
+          new = f"$KgInstallUrl = 'https://github.com/{repo}/releases/download/{version}/install.sh'"
+          out = src.replace(old, new).replace("\r\n", "\n").replace("\n", "\r\n")
+          open("out/Kistengeist-Installer.cmd", "wb").write(out.encode("utf-8"))
+          PY
+          (cd out && sha256sum ./*.tar.gz install.sh Kistengeist-Installer.cmd >> SHA256SUMS)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kistengeist-${{ steps.version.outputs.version }}
+          path: out/
+          retention-days: 14
+
+      # Release-Dateien sind direkte Downloads (Artefakte packt GitHub immer in eine weitere ZIP,
+      # die Raspberry Pi Imager nicht schreiben kann).
+      - name: Release veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          pre=""
+          if [[ "$GITHUB_REF" != refs/tags/v* ]]; then
+            pre="--prerelease"
+            # Erneuter Bau desselben Stands ersetzt die Vorabversion.
+            gh release delete "$VERSION" -y --cleanup-tag 2>/dev/null || true
+          fi
+          gh release create "$VERSION" out/* $pre --target "$GITHUB_SHA" \
+            --title "Kistengeist $VERSION" \
+            --notes "Image für Raspberry Pi 4 (64-bit). In Raspberry Pi Imager: Gerät „Raspberry Pi 4“, Betriebssystem „Eigenes Image verwenden“ → die Datei kistengeist-$VERSION.img.xz wählen. Anpassungen im Imager überspringen (nur WLAN ist erlaubt). Danach bootet der Pi in den Einrichtungs-Assistenten (http://kistengeist.local). Alternativ auf frischem Raspberry Pi OS Lite (64-bit): curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/$VERSION/install.sh | sudo bash. Anleitung: README."

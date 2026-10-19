@@ -1,0 +1,273 @@
+#!/usr/bin/env python3
+"""Knopf „Terminal“: Claude-Code-Terminal einblenden, daneben die Befehlsliste.
+
+Ohne Argument: ein-/ausblenden. --show: nur einblenden. --hide: nur ausblenden.
+Ausblenden schließt nur die Fenster; die Claude-Code-Sitzung (tmux) läuft weiter.
+Doppelklick auf einen Befehl fügt ihn ins Terminal ein.
+"""
+
+from __future__ import annotations
+
+import fcntl
+import os
+import queue
+import subprocess
+import sys
+import threading
+
+sys.path.insert(0, "/opt/kistengeist/lib")
+import kistengeist_commands as commands  # noqa: E402
+import kistengeist_panel as panel  # noqa: E402
+import kistengeist_terminal as terminal  # noqa: E402
+
+XTERM = [
+    "xterm", "-class", panel.TERM_CLASS, "-name", "kistengeist-term", "-T", "Claude Code",
+    "-fa", "Monospace", "-fs", "11", "-bg", "#1f1e1d", "-fg", "#e8e6e3", "-cr", "#d97757",
+    "-bc", "-sl", "0", "-tn", "xterm-256color",
+    # Ressourcen mit „*“: -class/-name ändern Klasse und Instanz, „XTerm*“ griffe nicht mehr.
+    # Kopieren/Einfügen wie in anderen Terminals: Strg+Umschalt+C/V.
+    "-xrm", "*selectToClipboard: true",
+    "-xrm", "*VT100.translations: #override \\n"
+            "Ctrl Shift <Key>C: copy-selection(CLIPBOARD) \\n"
+            "Ctrl Shift <Key>V: insert-selection(CLIPBOARD)",
+    # tmux legt Mausauswahlen per OSC 52 in die Zwischenablage; xterm sperrt das sonst.
+    "-xrm", "*disallowedWindowOps: 20,21,SetXprop",
+]
+
+
+def lock_file() -> str:
+    base = os.environ.get("XDG_RUNTIME_DIR") or os.path.join(os.path.expanduser("~"), ".cache")
+    os.makedirs(base, exist_ok=True)
+    return os.path.join(base, "kistengeist-panel.lock")
+
+
+class Panel:
+    def __init__(self) -> None:
+        import tkinter as tk
+        from tkinter import ttk
+
+        self.tk, self.ttk = tk, ttk
+        self.results: queue.Queue = queue.Queue()
+        self.mode = panel.read_mode()
+        self.term_proc: subprocess.Popen | None = None
+        self.entries: list[dict] = []
+        self.shown: dict[str, dict] = {}
+
+        self.root = tk.Tk(className="kistengeist-panel")
+        self.root.title("Befehle")
+        self.root.geometry("520x420")
+        self.root.protocol("WM_DELETE_WINDOW", self.close)
+        frame = ttk.Frame(self.root, padding=8)
+        frame.pack(fill="both", expand=True)
+
+        top = ttk.Frame(frame)
+        top.pack(fill="x")
+        ttk.Label(top, text="Suche:").pack(side="left")
+        self.query = tk.StringVar()
+        self.query.trace_add("write", lambda *_: self.fill())
+        search = ttk.Entry(top, textvariable=self.query, width=18)
+        search.pack(side="left", padx=4)
+        self.category = tk.StringVar(value="Alle")
+        self.cat_box = ttk.Combobox(top, textvariable=self.category, state="readonly", width=18)
+        self.cat_box.bind("<<ComboboxSelected>>", lambda _e: self.fill())
+        self.cat_box.pack(side="left", padx=4)
+        self.mode_btn = ttk.Button(top, command=self.toggle_mode)
+        self.mode_btn.pack(side="right")
+
+        self.tree = ttk.Treeview(frame, columns=("cmd", "desc"), show="headings", selectmode="browse")
+        self.tree.heading("cmd", text="Befehl")
+        self.tree.heading("desc", text="Wofür")
+        self.tree.column("cmd", width=150, stretch=False)
+        self.tree.column("desc", width=320)
+        scroll = ttk.Scrollbar(frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scroll.set)
+        self.tree.bind("<Double-1>", lambda _e: self.send_selected())
+        self.tree.bind("<Return>", lambda _e: self.send_selected())
+        self.tree.bind("<Delete>", lambda _e: self.delete())
+        self.tree.pack(side="top", fill="both", expand=True, pady=6)
+        scroll.place(in_=self.tree, relx=1.0, rely=0, relheight=1.0, anchor="ne")
+
+        row1 = ttk.Frame(frame)
+        row1.pack(fill="x")
+        ttk.Button(row1, text="Ins Terminal", command=self.send_selected).pack(side="left")
+        ttk.Button(row1, text="Markierung →", command=lambda: self.send_selection("primary")).pack(side="left", padx=4)
+        ttk.Button(row1, text="Zwischenablage →", command=lambda: self.send_selection("clipboard")).pack(side="left")
+        self.submit = tk.BooleanVar(value=False)
+        ttk.Checkbutton(row1, text="Sofort abschicken", variable=self.submit).pack(side="left", padx=6)
+
+        row2 = ttk.Frame(frame)
+        row2.pack(fill="x", pady=(6, 0))
+        ttk.Button(row2, text="Neu …", command=self.add_dialog).pack(side="left")
+        ttk.Button(row2, text="Löschen", command=self.delete).pack(side="left", padx=4)
+        ttk.Button(row2, text="Terminal öffnen", command=self.start_terminal).pack(side="left")
+        ttk.Button(row2, text="Ausblenden", command=self.close).pack(side="right")
+
+        self.status = ttk.Label(frame, text="Doppelklick fügt den Befehl ins Terminal ein.", foreground="#666")
+        self.status.pack(anchor="w", pady=(6, 0))
+
+        self.update_mode_btn()
+        self.reload()
+        self.start_terminal()
+        self.root.after(300, self.arrange, 20)
+        self.root.after(200, self.poll)
+        search.focus_set()
+
+    # --- Liste ---------------------------------------------------------------
+    def reload(self) -> None:
+        self.entries = commands.all_commands()
+        self.cat_box.configure(values=["Alle", *commands.categories(self.entries)])
+        self.fill()
+
+    def fill(self) -> None:
+        cat = self.category.get()
+        found = commands.search(self.entries, self.query.get(), "" if cat == "Alle" else cat)
+        self.tree.delete(*self.tree.get_children())
+        self.shown = {}
+        for i, e in enumerate(found):
+            iid = str(i)
+            self.shown[iid] = e
+            mark = " ★" if e["source"] == "eigene" else ""
+            self.tree.insert("", "end", iid=iid, values=(e["command"], e["description"] + mark))
+
+    def selected(self) -> dict | None:
+        sel = self.tree.selection()
+        return self.shown.get(sel[0]) if sel else None
+
+    # --- Senden (im Hintergrund, damit das Fenster nicht hängt) --------------
+    def _send(self, get_text) -> None:
+        submit = self.submit.get()
+
+        def work() -> None:
+            try:
+                self.results.put(terminal.send_text(get_text(), submit))
+            except (ValueError, OSError, subprocess.SubprocessError) as exc:
+                self.results.put(f"Nicht gesendet: {exc}")
+        threading.Thread(target=work, daemon=True).start()
+        self.ensure_terminal()
+
+    def send_selected(self) -> None:
+        entry = self.selected()
+        if entry is None:
+            self.status.configure(text="Bitte zuerst einen Befehl auswählen.")
+            return
+        self._send(lambda: entry["command"])
+
+    def send_selection(self, which: str) -> None:
+        self._send(lambda: terminal.read_selection(which))
+
+    def poll(self) -> None:
+        while not self.results.empty():
+            self.status.configure(text=self.results.get())
+        self.root.after(200, self.poll)
+
+    # --- Eigene Befehle ---------------------------------------------------------
+    def add_dialog(self) -> None:
+        tk, ttk = self.tk, self.ttk
+        win = tk.Toplevel(self.root)
+        win.title("Befehl hinzufügen")
+        win.transient(self.root)
+        body = ttk.Frame(win, padding=12)
+        body.pack(fill="both", expand=True)
+        try:  # Tk selbst fragen: gehört die Zwischenablage dem Panel, hinge xclip
+            prefill = self.root.clipboard_get().strip()
+        except tk.TclError:
+            prefill = ""
+        fields = {}
+        for key, label, value in (("command", "Befehl oder Text:", prefill if len(prefill) < 2000 else ""),
+                                  ("description", "Kurze Erklärung:", ""),
+                                  ("category", "Kategorie:", commands.USER_CATEGORY)):
+            ttk.Label(body, text=label).pack(anchor="w")
+            var = tk.StringVar(value=value)
+            ttk.Entry(body, textvariable=var, width=60).pack(fill="x", pady=(0, 6))
+            fields[key] = var
+        msg = ttk.Label(body, text="Vorbelegt mit der Zwischenablage.", foreground="#666")
+        msg.pack(anchor="w")
+
+        def save() -> None:
+            try:
+                commands.add_user(fields["command"].get(), fields["description"].get(), fields["category"].get())
+            except (ValueError, OSError) as exc:
+                msg.configure(text=str(exc))
+                return
+            win.destroy()
+            self.reload()
+            self.status.configure(text="Befehl aufgenommen (★ = eigener Befehl).")
+        buttons = ttk.Frame(body)
+        buttons.pack(fill="x", pady=(8, 0))
+        ttk.Button(buttons, text="Speichern", command=save).pack(side="right")
+        ttk.Button(buttons, text="Abbrechen", command=win.destroy).pack(side="right", padx=6)
+
+    def delete(self) -> None:
+        entry = self.selected()
+        if entry is None or entry["source"] != "eigene":
+            self.status.configure(text="Löschen geht nur bei eigenen Befehlen (★).")
+            return
+        commands.remove_user(entry["command"])
+        self.reload()
+        self.status.configure(text=f"Gelöscht: {entry['command']}")
+
+    # --- Terminal und Anordnung -------------------------------------------------
+    def start_terminal(self) -> None:
+        if self.term_proc is not None and self.term_proc.poll() is None:
+            panel.activate(panel.TERM_CLASS)
+            return
+        try:
+            self.term_proc = subprocess.Popen([*XTERM, "-e", *terminal.attach_command()])
+        except OSError as exc:
+            self.status.configure(text=f"Terminal nicht startbar: {exc}")
+            return
+        self.root.after(300, self.arrange, 20)
+
+    def ensure_terminal(self) -> None:
+        if self.term_proc is None or self.term_proc.poll() is not None:
+            self.start_terminal()
+
+    def arrange(self, tries: int = 1) -> None:
+        if not panel.apply(self.mode) and tries > 1:
+            self.root.after(250, self.arrange, tries - 1)
+
+    def update_mode_btn(self) -> None:
+        other = "unten" if self.mode == "geteilt" else "geteilt"
+        self.mode_btn.configure(text="Ansicht: " + panel.MODES[other])
+
+    def toggle_mode(self) -> None:
+        self.mode = "unten" if self.mode == "geteilt" else "geteilt"
+        panel.save_mode(self.mode)
+        self.update_mode_btn()
+        self.arrange(4)
+
+    def close(self) -> None:
+        # Nur die Fenster schließen; die Claude-Code-Sitzung in tmux bleibt erhalten.
+        if self.term_proc is not None and self.term_proc.poll() is None:
+            self.term_proc.terminate()
+        panel.restore_claude()
+        self.root.destroy()
+
+    def run(self) -> None:
+        self.root.mainloop()
+
+
+def main(argv: list[str]) -> int:
+    action = argv[0] if argv else "--toggle"
+    # Sperre statt nur Fensterliste: zwei schnelle Klicks sollen kein zweites Panel öffnen.
+    lock = open(lock_file(), "w")  # noqa: SIM115 – bleibt bis Programmende offen
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        locked = True
+    except OSError:
+        locked = False
+    if not locked or panel.panel_open():
+        if action in ("--toggle", "--hide"):
+            panel.close_windows(panel.PANEL_CLASS)
+        else:
+            panel.activate(panel.TERM_CLASS)
+            panel.activate(panel.PANEL_CLASS)
+        return 0
+    if action == "--hide":
+        return 0
+    Panel().run()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

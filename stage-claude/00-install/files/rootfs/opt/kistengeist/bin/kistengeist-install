@@ -1,0 +1,71 @@
+#!/bin/bash
+# Installiert alle im Setup-Assistenten gewählten Module.
+# Liest /etc/kistengeist/setup.conf, schreibt Fortschritt nach /run/kistengeist/status.json
+# und das Protokoll nach /var/log/kistengeist/install.log.
+set -u
+
+CP_HOME_DIR="${CP_HOME_DIR:-/opt/kistengeist}"
+# shellcheck source=../lib/common.sh
+. "${CP_HOME_DIR}/lib/common.sh"
+
+STATUS_DIR="${CP_STATUS_DIR:-${CP_ROOT}/run/kistengeist}"
+STATUS_FILE="${STATUS_DIR}/status.json"
+SECRET_FILE="${STATUS_DIR}/secret"
+MODULE_DIR="${CP_MODULE_DIR:-${CP_HOME_DIR}/modules}"
+PYTHON="${CP_PYTHON:-python3}"
+
+mkdir -p "$STATUS_DIR"
+export CP_ROOT CP_DRY_RUN CP_HOME_DIR CP_USER CP_LOG
+export CP_SECRET_FILE="$SECRET_FILE"
+
+json_escape() {
+    printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | tr -d '\n\r\t'
+}
+
+write_status() {
+    # write_status <state> <step> <total> <modul-id> <titel> [fehler]
+    local tmp="${STATUS_FILE}.tmp"
+    printf '{"state":"%s","step":%s,"total":%s,"module":"%s","title":"%s","error":"%s","updated":%s}\n' \
+        "$1" "$2" "$3" "$(json_escape "$4")" "$(json_escape "$5")" \
+        "$(json_escape "${6:-}")" "$(date +%s)" >"$tmp"
+    mv "$tmp" "$STATUS_FILE"
+}
+
+cleanup_secret() {
+    # Alle Geheimnisse aus dem Assistenten (nur im RAM) nach der Installation entfernen.
+    rm -f "$SECRET_FILE" "${STATUS_DIR}/account.secret" "${STATUS_DIR}/n8n.json" "${STATUS_DIR}/tailscale.key" \
+        "${STATUS_DIR}/browser.secret"
+}
+trap cleanup_secret EXIT
+
+[ -f "${CP_ETC}/setup.conf" ] || cp_die "Keine Einstellungen gefunden (${CP_ETC}/setup.conf)."
+# Ohne bestätigte rechtliche Hinweise wird nichts installiert (auch nicht bei direktem Aufruf).
+[ -f "${CP_ETC}/legal-accepted" ] || cp_die "Rechtliche Hinweise wurden nicht bestätigt."
+
+if ! plan="$("$PYTHON" "${CP_HOME_DIR}/wizard/modules.py" plan \
+    --modules-dir "$MODULE_DIR" --setup "${CP_ETC}/setup.conf")"; then
+    write_status failed 0 0 "" "Planung" "Modulauswahl ungültig"
+    cp_die "Modulauswahl ungültig."
+fi
+
+total=$(printf '%s\n' "$plan" | grep -c .)
+step=0
+cp_log "Installation startet: Modus=$(cp_mode), Module: $(printf '%s ' $plan)"
+
+for mod in $plan; do
+    step=$((step + 1))
+    title="$(sed -n 's/^NAME=//p' "${MODULE_DIR}/${mod}/module.conf" | tr -d '"')"
+    write_status running "$step" "$total" "$mod" "$title"
+    cp_log "=== [$step/$total] $title ($mod) ==="
+    # Eigener Prozess, damit "set -e" im Modul wirkt (in einer if-Bedingung
+    # würde es sonst ignoriert).
+    if ! bash -eu -o pipefail -c '. "$1"; cd "$(dirname "$2")"; . "$2"' _ \
+        "${CP_HOME_DIR}/lib/common.sh" "${MODULE_DIR}/${mod}/install.sh"; then
+        write_status failed "$step" "$total" "$mod" "$title" \
+            "Modul \"$title\" ist fehlgeschlagen. Details im Protokoll."
+        cp_die "Modul $mod fehlgeschlagen."
+    fi
+done
+
+write_status "done" "$total" "$total" "" "Fertig"
+cp_log "Installation abgeschlossen."

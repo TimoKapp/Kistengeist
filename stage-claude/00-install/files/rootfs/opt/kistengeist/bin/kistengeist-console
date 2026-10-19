@@ -1,0 +1,56 @@
+#!/bin/bash
+# Zeigt während der Einrichtung auf dem Bildschirm am Pi (tty1), wie man den
+# Setup-Assistenten öffnet – mit QR-Code für das Handy.
+
+status_line() {
+    local f=/run/kistengeist/status.json
+    [ -f "$f" ] || { echo "Wartet auf die Einrichtung im Browser."; return; }
+    python3 - "$f" <<'PY'
+import json, sys
+s = json.load(open(sys.argv[1]))
+state = s.get("state")
+if state == "running":
+    print(f"Installation läuft: Schritt {s.get('step')} von {s.get('total')} – {s.get('title')}")
+elif state == "failed":
+    print("Installation fehlgeschlagen: " + s.get("error", ""))
+elif state == "done":
+    print("Installation fertig. Neustart im Browser auslösen oder Pi neu starten.")
+else:
+    print("Wartet auf die Einrichtung im Browser.")
+PY
+}
+
+code="$(/opt/kistengeist/bin/kistengeist-setupcode)"
+while true; do
+    host="$(hostname)"
+    ips="$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+\.' | head -n 3 | tr '\n' ' ')"
+    first_ip="${ips%% *}"
+    url=""
+
+    clear
+    printf '\n  \033[1mKistengeist – Einrichtung\033[0m\n\n'
+    if [ -f /run/kistengeist/hotspot ]; then
+        printf '  Kein Internet gefunden. Verbinde dein Handy mit dem WLAN\n'
+        printf '    Name:     \033[1mKistengeist-Setup\033[0m\n'
+        printf '    Passwort: \033[1m%s\033[0m\n' "$code"
+        printf '  und öffne dann \033[1mhttp://10.42.0.1\033[0m (Einrichtungscode: \033[1m%s\033[0m)\n\n' "$code"
+        printf '  QR-Code 1 verbindet mit dem WLAN, QR-Code 2 öffnet den Assistenten.\n'
+        qrencode -t UTF8 -m 2 "WIFI:T:WPA;S:Kistengeist-Setup;P:${code};;" 2>/dev/null | sed 's/^/  /'
+        url="http://10.42.0.1/?code=${code}"
+    elif [ -n "$first_ip" ]; then
+        printf '  Öffne auf deinem PC oder Handy im Browser (dort zuerst die\n'
+        printf '  rechtlichen Hinweise und den Datenschutz lesen und bestätigen):\n\n'
+        printf '    \033[1mhttp://%s.local\033[0m\n' "$host"
+        for ip in $ips; do printf '    \033[1mhttp://%s\033[0m\n' "$ip"; done
+        printf '\n  Einrichtungscode: \033[1m%s\033[0m (im QR-Code schon enthalten)\n\n' "$code"
+        url="http://${first_ip}/?code=${code}"
+    else
+        printf '  Warte auf Netzwerk … (Netzwerkkabel anschließen oder kurz warten)\n'
+        printf '  Einrichtungscode: \033[1m%s\033[0m\n\n' "$code"
+    fi
+    if [ -n "$url" ] && command -v qrencode >/dev/null; then
+        qrencode -t UTF8 -m 2 "$url" | sed 's/^/  /'
+    fi
+    printf '\n  %s\n' "$(status_line)"
+    sleep 10
+done

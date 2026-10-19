@@ -1,0 +1,21 @@
+[Unit]
+Description=Kistengeist Einrichtungsanzeige auf dem Bildschirm
+After=systemd-user-sessions.service
+Conflicts=getty@tty1.service
+Before=getty@tty1.service
+ConditionPathExists=!/etc/kistengeist/installed
+
+[Service]
+Type=simple
+ExecStart=/opt/kistengeist/bin/kistengeist-console
+StandardInput=tty
+StandardOutput=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+Environment=TERM=linux
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

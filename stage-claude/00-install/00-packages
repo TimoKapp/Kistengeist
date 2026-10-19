@@ -1,0 +1,9 @@
+python3
+qrencode
+avahi-daemon
+network-manager
+curl
+gnupg
+ca-certificates
+dnsmasq-base
+polkitd

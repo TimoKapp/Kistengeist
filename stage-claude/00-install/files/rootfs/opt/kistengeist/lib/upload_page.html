@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>An Kistengeist senden</title>
+<style>
+:root { --bg:#f5f4ef; --surface:#fff; --text:#1f1e1d; --muted:#6b6862; --line:#e3e0d8; --accent:#c96442; --ok:#2e7d32; --err:#b3261e; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#1f1e1d; --surface:#2a2927; --text:#f5f4ef; --muted:#a8a49c; --line:#3d3a36; --accent:#d97757; --ok:#81c995; --err:#f28b82; }
+}
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+main { max-width:640px; margin:0 auto; padding:24px 16px 48px; }
+h1 { font-size:24px; margin:0 0 4px; }
+.lead { color:var(--muted); margin:0 0 20px; }
+.drop { display:block; border:2px dashed var(--line); border-radius:14px; background:var(--surface);
+        padding:40px 16px; text-align:center; cursor:pointer; transition:border-color .2s; }
+.drop.over { border-color:var(--accent); }
+.drop strong { display:block; font-size:18px; margin-bottom:4px; }
+.drop span { color:var(--muted); font-size:14px; }
+input[type=file] { display:none; }
+label.check { display:flex; gap:8px; align-items:center; margin:16px 0; }
+ul { list-style:none; padding:0; margin:16px 0 0; }
+li { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:8px; }
+.row { display:flex; justify-content:space-between; gap:12px; font-size:15px; }
+.name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.state { color:var(--muted); white-space:nowrap; }
+.state.ok { color:var(--ok); } .state.err { color:var(--err); }
+.bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin-top:6px; }
+.bar div { height:100%; width:0; background:var(--accent); transition:width .2s; }
+.error { color:var(--err); }
+</style>
+</head>
+<body>
+<main>
+  <h1>An Kistengeist senden</h1>
+  <p class="lead">Dateien landen im Ordner „Uploads“ auf dem Pi und können direkt in Claude geöffnet werden.</p>
+  <label class="drop" id="drop">
+    <input type="file" id="picker" multiple>
+    <strong>Dateien auswählen oder hierher ziehen</strong>
+    <span>Fotos, PDFs, Dokumente … bis 4 GB je Datei</span>
+  </label>
+  <label class="check"><input type="checkbox" id="send" checked> Danach direkt in Claude öffnen (bei mehreren Dateien die letzte)</label>
+  <p class="error" id="error" role="alert"></p>
+  <ul id="list" aria-live="polite"></ul>
+</main>
+<script>
+"use strict";
+const token = new URLSearchParams(location.search).get("t") || "";
+const list = document.getElementById("list");
+const queue = [];
+let busy = false;
+
+function item(file) {
+  const li = document.createElement("li");
+  const row = document.createElement("div"); row.className = "row";
+  const name = document.createElement("span"); name.className = "name"; name.textContent = file.name;
+  const state = document.createElement("span"); state.className = "state"; state.textContent = "wartet";
+  const bar = document.createElement("div"); bar.className = "bar";
+  const fill = document.createElement("div"); bar.append(fill);
+  row.append(name, state); li.append(row, bar); list.prepend(li);
+  return { state, fill };
+}
+
+async function precheck(job) {
+  // Vorab prüfen: bricht der Pi einen großen Upload ab, sieht der Browser die Meldung oft nicht.
+  try {
+    const res = await fetch("/api/info", { headers: { "X-Upload-Token": token }, cache: "no-store" });
+    const info = await res.json();
+    if (!res.ok) return info.error || ("Fehler " + res.status);
+    if (job.file.size > info.max_file) return "Datei zu groß (höchstens 4 GB).";
+    if (job.file.size > info.free) return "Nicht genug Speicherplatz auf dem Pi.";
+  } catch (e) {
+    return "Pi nicht erreichbar.";
+  }
+  return "";
+}
+
+function fail(job, text) {
+  job.ui.state.textContent = text;
+  job.ui.state.className = "state err";
+}
+
+async function upload(job, last) {
+  const problem = await precheck(job);
+  if (problem) { fail(job, problem); return; }
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", "/upload");
+    xhr.setRequestHeader("X-Upload-Token", token);
+    xhr.setRequestHeader("X-File-Name", encodeURIComponent(job.file.name));
+    // Nur die letzte Datei eines Stapels öffnet Claude (sonst eine Sitzung je Datei).
+    xhr.setRequestHeader("X-Send-To-Claude", last && document.getElementById("send").checked ? "1" : "0");
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.round(e.loaded * 100 / e.total);
+        job.ui.fill.style.width = pct + "%";
+        job.ui.state.textContent = pct + " %";
+      }
+    };
+    xhr.onload = () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText); } catch (e) { /* leer */ }
+      if (xhr.status === 200 && data.ok) {
+        job.ui.fill.style.width = "100%";
+        job.ui.state.textContent = "✓ " + (data.name === job.file.name ? "angekommen" : "als „" + data.name + "“");
+        job.ui.state.className = "state ok";
+      } else {
+        fail(job, data.error || ("Fehler " + xhr.status));
+      }
+      resolve();
+    };
+    xhr.onerror = () => { fail(job, "Verbindung unterbrochen"); resolve(); };
+    xhr.send(job.file);
+  });
+}
+
+async function run() {
+  if (busy) return;
+  busy = true;
+  while (queue.length) { const job = queue.shift(); await upload(job, queue.length === 0); }
+  busy = false;
+}
+
+function add(files) {
+  for (const file of files) queue.push({ file, ui: item(file) });
+  run();
+}
+
+const drop = document.getElementById("drop");
+document.getElementById("picker").addEventListener("change", (e) => { add(e.target.files); e.target.value = ""; });
+drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); add(e.dataTransfer.files); });
+if (!token) document.getElementById("error").textContent = "Zugangsschlüssel fehlt – bitte den QR-Code am Pi neu scannen.";
+</script>
+</body>
+</html>

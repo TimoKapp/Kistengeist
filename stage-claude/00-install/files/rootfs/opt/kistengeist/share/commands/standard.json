@@ -1,0 +1,234 @@
+{
+  "commands": [
+    {
+      "command": "/clear",
+      "description": "Neue Unterhaltung beginnen, Verlauf leeren",
+      "category": "Sitzung"
+    },
+    {
+      "command": "/resume",
+      "description": "Frühere Unterhaltung fortsetzen",
+      "category": "Sitzung"
+    },
+    {
+      "command": "/rename ",
+      "description": "Aktuelle Sitzung umbenennen",
+      "category": "Sitzung"
+    },
+    {
+      "command": "/rewind",
+      "description": "Zu einem früheren Stand zurückspringen (Code und Gespräch)",
+      "category": "Sitzung"
+    },
+    {
+      "command": "/compact",
+      "description": "Verlauf zusammenfassen, um Platz im Kontext zu sparen",
+      "category": "Sitzung"
+    },
+    {
+      "command": "/export",
+      "description": "Unterhaltung als Datei oder in die Zwischenablage exportieren",
+      "category": "Sitzung"
+    },
+    {
+      "command": "/copy",
+      "description": "Letzte Antwort von Claude in die Zwischenablage kopieren",
+      "category": "Sitzung"
+    },
+    {
+      "command": "/btw ",
+      "description": "Kurze Nebenfrage stellen, ohne die Hauptaufgabe zu stören",
+      "category": "Sitzung"
+    },
+    {
+      "command": "/exit",
+      "description": "Claude Code beenden (das Terminal bleibt offen)",
+      "category": "Sitzung"
+    },
+    {
+      "command": "/init",
+      "description": "CLAUDE.md mit Projektanleitung für Claude anlegen",
+      "category": "Kontext und Projekt"
+    },
+    {
+      "command": "/memory",
+      "description": "Gedächtnisdateien (CLAUDE.md) bearbeiten",
+      "category": "Kontext und Projekt"
+    },
+    {
+      "command": "/context",
+      "description": "Zeigen, wie voll der Kontext ist",
+      "category": "Kontext und Projekt"
+    },
+    {
+      "command": "/add-dir ",
+      "description": "Weiteren Ordner für diese Sitzung freigeben",
+      "category": "Kontext und Projekt"
+    },
+    {
+      "command": "/diff",
+      "description": "Änderungen dieser Sitzung anzeigen",
+      "category": "Kontext und Projekt"
+    },
+    {
+      "command": "/model",
+      "description": "KI-Modell wählen",
+      "category": "Modell und Arbeitsweise"
+    },
+    {
+      "command": "/effort",
+      "description": "Denkaufwand einstellen (schneller oder gründlicher)",
+      "category": "Modell und Arbeitsweise"
+    },
+    {
+      "command": "/plan",
+      "description": "Planmodus: erst planen, dann ändern",
+      "category": "Modell und Arbeitsweise"
+    },
+    {
+      "command": "/permissions",
+      "description": "Erlaubte und gesperrte Werkzeuge verwalten",
+      "category": "Modell und Arbeitsweise"
+    },
+    {
+      "command": "/loop ",
+      "description": "Eine Aufgabe in Abständen wiederholen lassen",
+      "category": "Modell und Arbeitsweise"
+    },
+    {
+      "command": "/tasks",
+      "description": "Laufende Hintergrundaufgaben anzeigen",
+      "category": "Modell und Arbeitsweise"
+    },
+    {
+      "command": "/review",
+      "description": "Code oder Pull Request prüfen lassen",
+      "category": "Code prüfen"
+    },
+    {
+      "command": "/security-review",
+      "description": "Änderungen auf Sicherheitslücken prüfen",
+      "category": "Code prüfen"
+    },
+    {
+      "command": "/mcp",
+      "description": "MCP-Server anzeigen und verwalten",
+      "category": "Erweiterungen"
+    },
+    {
+      "command": "/plugin",
+      "description": "Plugins suchen, installieren und verwalten",
+      "category": "Erweiterungen"
+    },
+    {
+      "command": "/skills",
+      "description": "Verfügbare Skills anzeigen",
+      "category": "Erweiterungen"
+    },
+    {
+      "command": "/agents",
+      "description": "Subagenten anlegen und verwalten lassen",
+      "category": "Erweiterungen"
+    },
+    {
+      "command": "/hooks",
+      "description": "Eingerichtete Hooks (automatische Aktionen) anzeigen",
+      "category": "Erweiterungen"
+    },
+    {
+      "command": "/remote-control",
+      "description": "Diese Sitzung für die Claude-App am Handy freigeben",
+      "category": "Handy und Fernsteuerung"
+    },
+    {
+      "command": "/mobile",
+      "description": "QR-Code zum Herunterladen der Claude-App aufs Handy",
+      "category": "Handy und Fernsteuerung"
+    },
+    {
+      "command": "/config",
+      "description": "Einstellungen öffnen",
+      "category": "Einstellungen und Konto"
+    },
+    {
+      "command": "/theme",
+      "description": "Farbschema wählen",
+      "category": "Einstellungen und Konto"
+    },
+    {
+      "command": "/status",
+      "description": "Version, Konto und Verbindung anzeigen",
+      "category": "Einstellungen und Konto"
+    },
+    {
+      "command": "/usage",
+      "description": "Verbrauch und Limits deines Abos anzeigen",
+      "category": "Einstellungen und Konto"
+    },
+    {
+      "command": "/login",
+      "description": "Bei Claude anmelden oder Konto wechseln",
+      "category": "Einstellungen und Konto"
+    },
+    {
+      "command": "/logout",
+      "description": "Abmelden",
+      "category": "Einstellungen und Konto"
+    },
+    {
+      "command": "/doctor",
+      "description": "Installation prüfen und Probleme finden",
+      "category": "Einstellungen und Konto"
+    },
+    {
+      "command": "/voice",
+      "description": "Spracheingabe ein- oder ausschalten",
+      "category": "Einstellungen und Konto"
+    },
+    {
+      "command": "/help",
+      "description": "Hilfe und alle Befehle anzeigen",
+      "category": "Einstellungen und Konto"
+    },
+    {
+      "command": "Erkläre mir kurz, was in diesem Ordner liegt und wie es aufgebaut ist.",
+      "description": "Überblick über das Projekt",
+      "category": "Vorlagen"
+    },
+    {
+      "command": "Finde und behebe den Fehler: ",
+      "description": "Fehlersuche starten (Fehlermeldung anhängen)",
+      "category": "Vorlagen"
+    },
+    {
+      "command": "Schreibe Tests für die zuletzt geänderten Dateien und führe sie aus.",
+      "description": "Tests ergänzen",
+      "category": "Vorlagen"
+    },
+    {
+      "command": "Fasse die Änderungen zusammen und schlage eine Commit-Nachricht vor.",
+      "description": "Commit vorbereiten",
+      "category": "Vorlagen"
+    },
+    {
+      "command": "!ls -la",
+      "description": "Dateien im aktuellen Ordner auflisten",
+      "category": "Shell (mit !)"
+    },
+    {
+      "command": "!git status",
+      "description": "Git-Status anzeigen",
+      "category": "Shell (mit !)"
+    },
+    {
+      "command": "!df -h",
+      "description": "Freien Speicherplatz anzeigen",
+      "category": "Shell (mit !)"
+    },
+    {
+      "command": "!claude update",
+      "description": "Claude Code aktualisieren",
+      "category": "Shell (mit !)"
+    }
+  ]
+}

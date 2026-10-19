@@ -1,0 +1,51 @@
+#!/bin/bash
+# X-Sitzung von Kistengeist (lokal über LightDM oder per RDP über xrdp).
+
+# Ohne Sitzungs-D-Bus kann der Schlüsselbund seinen Dienst nicht anbieten:
+# dann zuerst einen Bus starten und dieses Skript darin neu ausführen.
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+    exec dbus-launch --exit-with-session "$0" "$@"
+fi
+
+export XDG_CURRENT_DESKTOP=Kistengeist
+export XDG_SESSION_DESKTOP=kistengeist
+export DESKTOP_SESSION=kistengeist
+export PATH="$HOME/.local/bin:$PATH"
+
+mkdir -p "$HOME/.config/kistengeist"
+
+# Übergangslösungen aus der Testphase (Wrapper für openbox/tint2/xsetroot in ~/.local/bin)
+# würden die eingebauten Korrekturen doppelt anwenden: einmalig beiseitelegen.
+for tool in openbox tint2 xsetroot; do
+    if [ -f "$HOME/.local/bin/$tool" ] && head -c 2 "$HOME/.local/bin/$tool" | grep -q '#!'; then
+        mkdir -p "$HOME/.local/bin/kistengeist-alt"
+        mv "$HOME/.local/bin/$tool" "$HOME/.local/bin/kistengeist-alt/$tool"
+    fi
+done
+
+# Mauszeigergröße passend zur gewählten Schriftgröße (Rest über ~/.Xresources).
+eval "$(python3 /opt/kistengeist/lib/kistengeist_scale.py env 2>/dev/null)"
+export XCURSOR_THEME XCURSOR_SIZE
+
+# Schlüsselbund: Claude Desktop speichert dort seine Anmeldung.
+# Bei Passwort-Anmeldung hat PAM ihn bereits entsperrt. Bei automatischer
+# Anmeldung gibt es kein Passwort; dann wird er ohne Passwort angelegt bzw.
+# entsperrt (der Pi ist ein Einzelplatzgerät; siehe README).
+autologin="$(sed -n 's/^AUTOLOGIN=//p' /etc/kistengeist/setup.conf 2>/dev/null | tr -d '"')"
+if [ "$autologin" = "yes" ] && [ -z "${XRDP_SESSION:-}" ]; then
+    keyrings="$HOME/.local/share/keyrings"
+    mkdir -p "$keyrings"
+    chmod 700 "$keyrings"
+    [ -f "$keyrings/default" ] || printf 'login' >"$keyrings/default"
+    # --replace übernimmt einen schon (per PAM, gesperrt) gestarteten Daemon.
+    eval "$(printf '' | gnome-keyring-daemon --replace --unlock --daemonize --components=secrets 2>/dev/null)" || true
+fi
+eval "$(gnome-keyring-daemon --start --components=secrets 2>/dev/null)" || true
+export GNOME_KEYRING_CONTROL SSH_AUTH_SOCK
+
+# D-Bus-gestartete Helfer (z. B. Schlüsselbund-Dialoge) brauchen DISPLAY.
+dbus-update-activation-environment --systemd DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP XCURSOR_THEME XCURSOR_SIZE 2>/dev/null \
+    || dbus-update-activation-environment DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP XCURSOR_THEME XCURSOR_SIZE 2>/dev/null || true
+
+exec openbox --config-file /opt/kistengeist/share/openbox/rc.xml \
+    --startup /opt/kistengeist/bin/kistengeist-autostart

@@ -1,0 +1,15 @@
+#!/bin/bash
+# Menü zum Ausschalten, Neustarten oder Abmelden.
+
+choice="$(zenity --list --title "Kistengeist" --text "Was möchtest du tun?" \
+    --column "Aktion" "Bildschirm sperren" "Abmelden" "Neu starten" "Ausschalten" "Schriftgröße" "Rechtliches und Datenschutz" \
+    --width 320 --height 340 2>/dev/null)" || exit 0
+
+case "$choice" in
+    "Bildschirm sperren") dm-tool lock 2>/dev/null || xset dpms force off ;;
+    "Abmelden") openbox --exit ;;
+    "Neu starten") systemctl reboot ;;
+    "Ausschalten") systemctl poweroff ;;
+    "Schriftgröße") exec /opt/kistengeist/bin/kistengeist-scale ;;
+    "Rechtliches und Datenschutz") exec /opt/kistengeist/bin/kistengeist-legal ;;
+esac

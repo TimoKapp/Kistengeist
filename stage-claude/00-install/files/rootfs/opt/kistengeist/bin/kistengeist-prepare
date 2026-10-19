@@ -1,0 +1,40 @@
+#!/bin/bash
+# Bereitet das System für den Setup-Assistenten vor: Rechte, Ordner, Sitzungsbenutzer, Dienste.
+# Gemeinsam genutzt vom Image-Bau (pi-gen, --image) und vom Ein-Befehl-Installer (--live) auf einem
+# laufenden Raspberry Pi OS Lite.
+set -euo pipefail
+mode="${1:-}"
+case "$mode" in --image|--live) ;; *) echo "Aufruf: $0 --image|--live" >&2; exit 2 ;; esac
+
+chown -R root:root /opt/kistengeist /usr/share/xsessions/kistengeist.desktop
+chown root:root /etc/systemd/system/kistengeist-*.service
+chmod 0755 /opt/kistengeist/bin/* /opt/kistengeist/wizard/server.py /opt/kistengeist/wizard/modules.py
+find /opt/kistengeist/modules -name install.sh -exec chmod 0644 {} +
+
+install -d -m 0755 /etc/kistengeist /var/log/kistengeist
+
+# Sitzungsbenutzer "claude": Passwort gesperrt, bis es im Setup-Assistenten gesetzt wird. Einen
+# schon vorhandenen Benutzer gleichen Namens (laufendes System) lassen wir, wie er ist.
+if ! id claude >/dev/null 2>&1; then
+    useradd -m -s /bin/bash claude
+    passwd -l claude
+elif [ "$mode" = --image ]; then
+    passwd -l claude
+fi
+for group in sudo video render audio input plugdev netdev; do
+    if getent group "$group" >/dev/null; then
+        usermod -aG "$group" claude
+    fi
+done
+
+if [ "$mode" = --image ]; then
+    # Raspberry Pi Connect wird nicht gebraucht (weniger Dienste, weniger Datenflüsse). Auf einem
+    # laufenden System bleibt es: Wer darüber verbunden ist, soll nicht ausgesperrt werden.
+    apt-get purge -y rpi-connect-lite rpi-connect 2>/dev/null || true
+fi
+
+systemctl enable kistengeist-setup.service kistengeist-console.service kistengeist-hotspot.service
+systemctl enable avahi-daemon.service NetworkManager.service
+
+# Einrichtung findet ohne grafische Oberfläche statt.
+systemctl set-default multi-user.target

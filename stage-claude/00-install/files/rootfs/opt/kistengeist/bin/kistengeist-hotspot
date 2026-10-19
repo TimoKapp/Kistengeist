@@ -1,0 +1,101 @@
+#!/bin/bash
+# Netzwerk für die Einrichtung:
+#   kistengeist-hotspot start                 wartet auf Internet; ohne Internet
+#                                           startet ein WLAN "Kistengeist-Setup"
+#   kistengeist-hotspot connect SSID [PASS]   verbindet mit dem eigenen WLAN
+set -u
+
+RUN=/run/kistengeist
+CON=kistengeist-setup
+SSID=Kistengeist-Setup
+# Passwort = Einrichtungscode dieses Geräts (zufällig, am Bildschirm des Pi bzw. im
+# Windows-Werkzeug) – kein festes, öffentlich bekanntes Passwort.
+PASS="$(/opt/kistengeist/bin/kistengeist-setupcode)"
+
+mkdir -p "$RUN"
+
+wifi_dev() {
+    nmcli -t -f DEVICE,TYPE device status 2>/dev/null | awk -F: '$2=="wifi"{print $1; exit}'
+}
+
+has_internet() {
+    local state
+    state="$(nmcli -t networking connectivity check 2>/dev/null)"
+    [ "$state" = "full" ] || [ "$state" = "limited" ] || ip route show default 2>/dev/null | grep -q .
+}
+
+scan() {
+    nmcli -t -f SSID,SIGNAL,SECURITY device wifi list --rescan yes 2>/dev/null | python3 -c '
+import json, sys
+seen, out = set(), []
+for line in sys.stdin:
+    parts = line.rstrip("\n").replace("\\:", "\x00").split(":")
+    if len(parts) < 2:
+        continue
+    ssid = parts[0].replace("\x00", ":")
+    if not ssid or ssid in seen:
+        continue
+    seen.add(ssid)
+    out.append({"ssid": ssid, "signal": int(parts[1] or 0), "secure": bool(parts[2].strip()) if len(parts) > 2 else False})
+out.sort(key=lambda w: -w["signal"])
+json.dump(out[:30], open(sys.argv[1], "w"))
+' "$RUN/wifi.json"
+}
+
+start_hotspot() {
+    local dev
+    dev="$(wifi_dev)"
+    if [ -z "$dev" ]; then
+        echo "Kein Internet und kein WLAN-Gerät – warte auf Netzwerkkabel."
+        return 1
+    fi
+    scan || true
+    nmcli connection delete "$CON" >/dev/null 2>&1 || true
+    if nmcli device wifi hotspot ifname "$dev" con-name "$CON" ssid "$SSID" password "$PASS"; then
+        touch "$RUN/hotspot"
+        echo "Hotspot $SSID gestartet."
+    else
+        echo "Hotspot konnte nicht gestartet werden." >&2
+        return 1
+    fi
+}
+
+start() {
+    for _ in $(seq 1 45); do
+        if has_internet; then
+            rm -f "$RUN/hotspot"
+            return 0
+        fi
+        sleep 2
+    done
+    start_hotspot || true
+}
+
+connect() {
+    local ssid="$1" pass="${2:-}" dev
+    dev="$(wifi_dev)"
+    [ -n "$dev" ] || exit 1
+    nmcli connection down "$CON" >/dev/null 2>&1 || true
+    nmcli connection delete "$CON" >/dev/null 2>&1 || true
+    rm -f "$RUN/hotspot"
+    nmcli device wifi rescan ifname "$dev" >/dev/null 2>&1 || true
+    sleep 5
+    local args=(device wifi connect "$ssid" ifname "$dev")
+    [ -n "$pass" ] && args+=(password "$pass")
+    # Nicht in der Scanliste: verstecktes WLAN.
+    if ! python3 -c 'import json,sys; sys.exit(0 if any(w["ssid"] == sys.argv[2] for w in json.load(open(sys.argv[1]))) else 1)' \
+        "$RUN/wifi.json" "$ssid" 2>/dev/null; then
+        args+=(hidden yes)
+    fi
+    if ! nmcli "${args[@]}"; then
+        echo "Verbindung mit $ssid fehlgeschlagen – Hotspot wird wieder gestartet." >&2
+        start_hotspot || true
+        exit 1
+    fi
+}
+
+case "${1:-}" in
+    start) start ;;
+    connect) shift; connect "$@" ;;
+    *) echo "Aufruf: $0 start | connect SSID [PASSWORT]" >&2; exit 2 ;;
+esac

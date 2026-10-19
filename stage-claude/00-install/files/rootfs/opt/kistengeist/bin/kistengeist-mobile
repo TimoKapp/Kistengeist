@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""Fenster „Handy“: Claude vom Handy aus nutzen – wie in der Original-App.
+
+Remote Control: eine Sitzung „Kistengeist“ erscheint in der Claude-App unter „Code“;
+von dort lassen sich auch neue Sitzungen auf dem Pi starten.
+Dispatch: Aufgaben vom Handy an Claude Desktop (Cowork) auf dem Pi schicken.
+"""
+
+from __future__ import annotations
+
+import os
+import queue
+import subprocess
+import sys
+import tempfile
+import threading
+
+sys.path.insert(0, "/opt/kistengeist/lib")
+import kistengeist_links as links  # noqa: E402
+import kistengeist_mobile as mobile  # noqa: E402
+
+# Anmelden und einmalig Remote Control zustimmen (das kann der Hintergrunddienst nicht).
+LOGIN_CMD = (
+    'set -u; claude auth login || exit 1; echo; '
+    'echo "Jetzt einmalig Remote Control zustimmen: bei der Frage „Enable Remote Control?“ y drücken."; '
+    'echo "Sobald eine Sitzungsadresse erscheint, mit Strg+C beenden – danach übernimmt der Dienst."; '
+    'echo; cd "$HOME/Projekte" && claude remote-control --name Kistengeist; '
+    'systemctl --user --no-block restart kistengeist-remote.service; '
+    'read -r -p "Fertig – Enter schließt das Fenster." _'
+)
+REFRESH_MS = 10000
+
+
+class App:
+    def __init__(self) -> None:
+        import tkinter as tk
+        from tkinter import ttk
+
+        self.tk, self.ttk = tk, ttk
+        self.results: queue.Queue = queue.Queue()
+        self.busy = False
+        self.closed = False
+
+        self.root = tk.Tk(className="kistengeist-mobile")
+        self.root.title("Handy")
+        self.root.geometry("620x820")
+        self.root.protocol("WM_DELETE_WINDOW", self.close)
+        frame = ttk.Frame(self.root, padding=16)
+        frame.pack(fill="both", expand=True)
+
+        def heading(text: str) -> None:
+            ttk.Label(frame, text=text, font=("Sans", 13, "bold")).pack(anchor="w", pady=(10, 2))
+
+        def para(text: str) -> None:
+            ttk.Label(frame, text=text, wraplength=580, justify="left").pack(anchor="w")
+
+        heading("1. Claude-App aufs Handy")
+        para("QR-Code scannen, Claude-App installieren und mit demselben Konto anmelden.")
+        self.qr = self.make_qr(mobile.APP_URL)
+        if self.qr is not None:
+            ttk.Label(frame, image=self.qr).pack(pady=4)
+
+        heading("2. Remote Control – Claude Code vom Handy")
+        para("In der Claude-App unter „Code“ erscheint die Sitzung „Kistengeist“; dort startest und "
+             "steuerst du Sitzungen im Ordner Projekte. Einmalig anmelden und zustimmen genügt. "
+             "Hinweis: Sitzungen am Pi und vom Handy arbeiten im selben Ordner.")
+        self.auth_label = ttk.Label(frame, text="Prüfe Anmeldung …")
+        self.auth_label.pack(anchor="w", pady=(6, 0))
+        self.service_label = ttk.Label(frame, text="")
+        self.service_label.pack(anchor="w")
+        row = ttk.Frame(frame)
+        row.pack(anchor="w", pady=6)
+        ttk.Button(row, text="Anmelden und zustimmen", command=self.login).pack(side="left")
+        ttk.Button(row, text="Dienst neu starten", command=self.restart).pack(side="left", padx=8)
+        ttk.Button(row, text="Protokoll", command=self.show_log).pack(side="left")
+
+        # Einstellungen wie in der Original-App (dort über /config bzw. Desktop-Einstellungen).
+        self.toggle_vars: dict[str, object] = {}
+        current = mobile.read_toggles()
+        for key, label in mobile.TOGGLES.items():
+            var = tk.BooleanVar(value=current[key])
+            self.toggle_vars[key] = var
+            ttk.Checkbutton(frame, text=label, variable=var,
+                            command=lambda k=key, v=var: mobile.set_toggle(k, v.get())).pack(anchor="w")
+
+        heading("3. Dispatch – Aufgaben vom Handy an Claude Desktop")
+        para("In Claude auf „Cowork“ → „Dispatch“ → „Get started“, Dateizugriff erlauben, fertig. "
+             "Danach schreibst du Dispatch in der Handy-App eine Aufgabe. Voraussetzungen laut Anthropic: "
+             "Pro- oder Max-Abo, Dispatch für dein Konto freigeschaltet (derzeit eingeschränkte Beta) "
+             "und Claude Desktop läuft auf dem Pi.")
+        self.cowork_label = ttk.Label(frame, text="")
+        self.cowork_label.pack(anchor="w", pady=(6, 0))
+        self.desktop_label = ttk.Label(frame, text="")
+        self.desktop_label.pack(anchor="w")
+        ttk.Button(frame, text="Cowork in Claude öffnen",
+                   command=lambda: links.open_link("claude://cowork/new")).pack(anchor="w", pady=6)
+
+        ttk.Button(frame, text="Schließen", command=self.close).pack(side="bottom", anchor="e")
+        self.tick()
+        self.root.after(200, self.poll_results)
+
+    def make_qr(self, url: str):
+        fd, path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        try:
+            subprocess.run(["qrencode", "-s", "5", "-m", "2", "-o", path, url], check=True, capture_output=True)
+            return self.tk.PhotoImage(file=path)
+        except (OSError, subprocess.CalledProcessError, self.tk.TclError):
+            return None
+        finally:
+            os.unlink(path)
+
+    # Statusabfrage: genau ein Hintergrund-Thread; Ergebnisse über eine Queue in den Tk-Thread.
+    def refresh_now(self) -> None:
+        if self.busy:
+            return
+        self.busy = True
+
+        def work() -> None:
+            try:
+                ready, cowork_text = mobile.cowork_ready()
+                self.results.put((mobile.auth_state(), mobile.service_state(), ready, cowork_text,
+                                  mobile.desktop_running()))
+            finally:
+                self.busy = False
+        threading.Thread(target=work, daemon=True).start()
+
+    def tick(self) -> None:
+        if self.closed:
+            return
+        self.refresh_now()
+        self.root.after(REFRESH_MS, self.tick)
+
+    def poll_results(self) -> None:
+        if self.closed:
+            return
+        while not self.results.empty():
+            self.show(*self.results.get())
+        self.root.after(200, self.poll_results)
+
+    def show(self, auth, service: str, ready: bool, cowork_text: str, desktop: bool) -> None:
+        self.auth_label.configure(text="Claude Code: " + auth.text)
+        states = {"active": "läuft – Sitzung „Kistengeist“ ist in der Claude-App sichtbar",
+                  "activating": "startet …", "inactive": "aus", "failed": "Fehler – siehe Protokoll"}
+        self.service_label.configure(text="Handy-Dienst: " + states.get(service, service))
+        self.cowork_label.configure(text=("✓ " if ready else "✗ ") + cowork_text)
+        self.desktop_label.configure(text="✓ Claude Desktop läuft." if desktop
+                                     else "✗ Claude Desktop läuft gerade nicht – Dispatch braucht es.")
+
+    def login(self) -> None:
+        subprocess.Popen(["lxterminal", "--title=Claude Code: Anmelden und zustimmen",
+                          "-e", "bash", "-lc", LOGIN_CMD])
+
+    def restart(self) -> None:
+        mobile.restart_service()
+        self.refresh_now()
+
+    def show_log(self) -> None:
+        win = self.tk.Toplevel(self.root)
+        win.title("Protokoll Handy-Dienst")
+        text = self.tk.Text(win, width=90, height=24, font=("Monospace", 9))
+        text.insert("1.0", mobile.service_log() or "Noch keine Einträge.")
+        text.configure(state="disabled")
+        text.pack(padx=8, pady=8)
+
+    def close(self) -> None:
+        self.closed = True
+        self.root.destroy()
+
+    def run(self) -> None:
+        self.root.mainloop()
+
+
+if __name__ == "__main__":
+    App().run()

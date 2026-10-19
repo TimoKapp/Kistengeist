@@ -1,0 +1,14 @@
+[Unit]
+Description=Kistengeist Setup-Assistent (Port 80)
+After=network-online.target avahi-daemon.service
+Wants=network-online.target
+ConditionPathExists=!/etc/kistengeist/installed
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/kistengeist/wizard/server.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

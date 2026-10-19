@@ -1,0 +1,97 @@
+#!/bin/bash
+# Startet die Bestandteile der Claude-Oberfläche (von Openbox aufgerufen).
+# --panel-only: nur die Leiste neu erzeugen und starten (nach Änderung der Schriftgröße).
+
+setup=/etc/kistengeist/setup.conf
+modules="$(sed -n 's/^MODULES=//p' "$setup" 2>/dev/null | tr -d '"')"
+selected() {
+    case " $modules " in *" $1 "*) return 0 ;; esac
+    return 1
+}
+
+start_panel() {
+    # Leiste: nur Startsymbole für installierte Programme, in fester Reihenfolge; Größen
+    # wachsen mit der gewählten Schriftgröße (kistengeist_scale.py).
+    local tint2rc="$HOME/.config/kistengeist/tint2rc"
+    {
+        python3 /opt/kistengeist/lib/kistengeist_scale.py tint2 /opt/kistengeist/share/tint2/tint2rc.in \
+            || cat /opt/kistengeist/share/tint2/tint2rc.in
+        for app in claude code terminal vscode n8n browser files upload mobile storage power; do
+            f="/opt/kistengeist/share/applications/kistengeist-${app}.desktop"
+            [ -f "$f" ] && printf 'launcher_item_app = %s\n' "$f"
+        done
+    } >"$tint2rc"
+    pkill -u "$(id -u)" -x tint2 2>/dev/null || true
+    tint2 -c "$tint2rc" &
+}
+
+if [ "${1:-}" = "--panel-only" ]; then
+    start_panel
+    exit 0
+fi
+
+# Hintergrund links und rechts von Claude: zartes Beige.
+xsetroot -solid '#efe8dc' 2>/dev/null || true
+
+# Erste Anmeldung: Schriftgröße wählen, bevor Claude startet (Claude liest sie beim Start).
+# Ohne Antwort geht es nach 2 Minuten mit 100 % weiter; die Leiste kommt danach mit passender Größe.
+/opt/kistengeist/bin/kistengeist-scale --first
+[ -f "$HOME/.Xresources" ] && xrdb -merge "$HOME/.Xresources" 2>/dev/null
+
+# Für das Terminal-Panel: Claude Desktop startet MCP-Server ohne DISPLAY/LANG.
+mkdir -p "$HOME/.config/kistengeist"
+lang="${LANG:-}"
+[ -z "$lang" ] && lang="$(sed -n 's/^LANG=//p' /etc/default/locale 2>/dev/null | tr -d '"')"
+printf 'DISPLAY=%s\nXAUTHORITY=%s\nLANG=%s\n' "${DISPLAY:-}" "${XAUTHORITY:-$HOME/.Xauthority}" \
+    "${lang:-C.UTF-8}" >"$HOME/.config/kistengeist/display.env"
+
+# Energiesparen: Bildschirm nach Leerlauf abschalten (nur am echten Bildschirm).
+if [ -z "${XRDP_SESSION:-}" ]; then
+    seconds=0
+    if [ -r /etc/kistengeist/energy.conf ]; then
+        seconds="$(sed -n 's/^SCREEN_OFF_SECONDS=//p' /etc/kistengeist/energy.conf)"
+    fi
+    if [ "${seconds:-0}" -gt 0 ] 2>/dev/null; then
+        xset s "$seconds" "$seconds" dpms "$seconds" "$seconds" "$seconds"
+    else
+        xset s off -dpms
+    fi
+fi
+
+start_panel
+
+# RDP: Ton auf die Lautsprecher des Arbeitsplatzes, Mikrofon vom Arbeitsplatz an den Pi.
+# Openbox führt XDG-Autostart nicht aus – daher hier das Ladeskript von pipewire-module-xrdp
+# (Pfad aus dessen Autostart-Eintrag) starten, sobald PipeWire läuft.
+if [ -n "${XRDP_SESSION:-}" ] && [ -f /etc/xdg/autostart/pipewire-xrdp.desktop ]; then
+    (
+        systemctl --user start pipewire.socket pipewire-pulse.socket wireplumber.service 2>/dev/null || true
+        for _ in $(seq 1 20); do
+            pactl info >/dev/null 2>&1 && break
+            sleep 0.5
+        done
+        loader="$(sed -n 's/^Exec=//p' /etc/xdg/autostart/pipewire-xrdp.desktop | head -n 1)"
+        [ -n "$loader" ] && sh -c "$loader"
+    ) >"$HOME/.config/kistengeist/audio.log" 2>&1 &
+fi
+
+if selected files && command -v udiskie >/dev/null; then
+    udiskie --automount --no-notify --no-tray &
+fi
+
+# RDP-Spiegelung (Zugangsart "beides"): VNC nur lokal, Zugriff über xrdp.
+if [ -z "${XRDP_SESSION:-}" ] && [ -s "$HOME/.config/kistengeist/vnc.passwd" ] \
+    && command -v x11vnc >/dev/null; then
+    x11vnc -display "$DISPLAY" -localhost -rfbport 5900 \
+        -rfbauth "$HOME/.config/kistengeist/vnc.passwd" \
+        -forever -shared -noxdamage -quiet -bg \
+        -o "$HOME/.config/kistengeist/x11vnc.log" || true
+fi
+
+if selected storage; then
+    /opt/kistengeist/bin/kistengeist-storage --watch &
+fi
+
+# Claude ist der Mittelpunkt: wird es geschlossen oder stürzt es ab, startet
+# es nach kurzer Pause neu.
+/opt/kistengeist/bin/kistengeist-launch claude-loop &

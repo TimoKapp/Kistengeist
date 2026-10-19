@@ -1,0 +1,68 @@
+# tint2-Leiste von Kistengeist (Vorlage; die Startsymbole ergänzt kistengeist-autostart).
+rounded = 0
+border_width = 0
+background_color = #e6dccb 100
+border_color = #e6dccb 0
+
+rounded = 6
+border_width = 0
+background_color = #d8ccb6 100
+border_color = #d8ccb6 0
+
+panel_items = LTSC
+panel_monitor = all
+panel_position = bottom center horizontal
+panel_size = 100% 44
+panel_margin = 0 0
+panel_padding = 8 4 8
+panel_background_id = 1
+panel_layer = top
+panel_dock = 0
+strut_policy = follow_size
+autohide = 0
+
+launcher_padding = 4 4 8
+launcher_background_id = 0
+launcher_icon_size = 32
+launcher_icon_theme = Adwaita
+launcher_icon_theme_override = 1
+launcher_tooltip = 1
+
+taskbar_mode = single_desktop
+taskbar_padding = 4 2 4
+taskbar_background_id = 0
+taskbar_active_background_id = 2
+taskbar_name = 0
+
+task_icon = 1
+task_text = 1
+task_centered = 0
+task_maximum_size = 220 36
+task_padding = 6 4 6
+task_font = Sans 11
+task_font_color = #3d3a36 90
+task_active_font_color = #1f1e1d 100
+task_background_id = 0
+task_active_background_id = 2
+
+systray_padding = 4 4 4
+systray_icon_size = 22
+systray_background_id = 0
+
+time1_format = %H:%M
+time2_format = %a, %d.%m.
+time1_font = Sans Bold 11
+time2_font = Sans 9
+clock_font_color = #3d3a36 100
+clock_padding = 8 0
+clock_background_id = 0
+
+tooltip_show_timeout = 0.4
+tooltip_hide_timeout = 0.1
+tooltip_padding = 6 4
+tooltip_background_id = 2
+tooltip_font_color = #1f1e1d 100
+
+mouse_left = toggle_iconify
+mouse_middle = none
+mouse_right = none

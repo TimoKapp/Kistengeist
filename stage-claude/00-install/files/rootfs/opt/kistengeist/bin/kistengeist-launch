@@ -1,0 +1,112 @@
+#!/bin/bash
+# Startet die Programme der Leiste: claude | claude-loop | code | terminal | to-terminal | vscode | n8n |
+# browser | files | upload | mobile | storage | power
+
+# Chromium/Electron wählen den Passwortspeicher anhand von XDG_CURRENT_DESKTOP;
+# bei unserer eigenen Sitzung fiele er auf Klartext zurück. Daher explizit:
+STORE=--password-store=gnome-libsecret
+# Schriftgröße (kistengeist-scale): Electron/Chrome lesen Xft.dpi über GTK; zur Sicherheit
+# zusätzlich den Faktor direkt übergeben (bei 100 % nichts).
+scale="$(python3 /opt/kistengeist/lib/kistengeist_scale.py get 2>/dev/null)"
+SCALE_ARGS=()
+case "$scale" in
+    125 | 150 | 175 | 200) SCALE_ARGS=("--force-device-scale-factor=$(printf '%d.%02d' $((scale / 100)) $((scale % 100)))") ;;
+esac
+
+browser_cmd() {
+    local b
+    b="$(head -n 1 /etc/kistengeist/browser 2>/dev/null)"
+    case "$b" in
+        google-chrome-stable | chromium) printf '%s' "$b" ;;
+        *) command -v google-chrome-stable >/dev/null && printf 'google-chrome-stable' || printf 'chromium' ;;
+    esac
+}
+
+notify_missing() {
+    zenity --error --width 360 --title "Kistengeist" \
+        --text "$1 ist nicht installiert. Du kannst das Modul über die Einrichtung nachinstallieren." \
+        2>/dev/null &
+}
+
+case "${1:-}" in
+    claude)
+        # Läuft Claude schon, holt ein erneuter Start das Fenster nach vorn
+        # (die App erlaubt nur eine Instanz).
+        command -v claude-desktop >/dev/null || { notify_missing "Claude Desktop"; exit 1; }
+        exec claude-desktop "$STORE" "${SCALE_ARGS[@]}"
+        ;;
+    claude-loop)
+        command -v claude-desktop >/dev/null || exit 0
+        delay=3
+        while true; do
+            started=$(date +%s)
+            claude-desktop "$STORE" "${SCALE_ARGS[@]}"
+            # Läuft die App kürzer als 30 s, Wartezeit erhöhen (max. 60 s),
+            # damit ein Dauerabsturz den Pi nicht auslastet.
+            if [ $(($(date +%s) - started)) -lt 30 ]; then
+                delay=$((delay * 2 > 60 ? 60 : delay * 2))
+            else
+                delay=3
+            fi
+            sleep "$delay"
+        done
+        ;;
+    code)
+        # Claude Code in der Oberfläche von Claude Desktop (Code-Bereich) über den
+        # offiziellen Link claude://code/new; Arbeitsordner ~/Projekte.
+        command -v claude-desktop >/dev/null || { notify_missing "Claude Desktop"; exit 1; }
+        mkdir -p "$HOME/Projekte"
+        exec python3 -c 'import sys; sys.path.insert(0, "/opt/kistengeist/lib")
+import kistengeist_links as l; l.open_link(l.code_link(sys.argv[1]))' "$HOME/Projekte"
+        ;;
+    terminal)
+        # Claude-Code-Terminal mit Befehlsliste ein-/ausblenden.
+        [ -x /opt/kistengeist/bin/kistengeist-panel ] && command -v tmux >/dev/null \
+            || { notify_missing "Das Terminal-Panel"; exit 1; }
+        exec /opt/kistengeist/bin/kistengeist-panel
+        ;;
+    to-terminal)
+        # Markierten Text (z. B. in Claude Desktop) ins Claude-Code-Terminal einfügen.
+        command -v tmux >/dev/null || { notify_missing "Das Terminal-Panel"; exit 1; }
+        exec python3 /opt/kistengeist/lib/kistengeist_terminal.py send --selection "${2:-primary}"
+        ;;
+    vscode)
+        command -v code >/dev/null || { notify_missing "VS Code"; exit 1; }
+        mkdir -p "$HOME/Projekte"
+        exec code "$HOME/Projekte"
+        ;;
+    n8n)
+        # n8n im Browser öffnen (Adresse vom Modul in access.json hinterlegt).
+        url="$(python3 -c 'import json; print(json.load(open("/etc/kistengeist/access.json")).get("n8n_url", ""))' 2>/dev/null)"
+        url="${url:-http://localhost:5678}"
+        [ "${url#http://127.0.0.1}" != "$url" ] && url="http://localhost:5678"
+        cmd="$(browser_cmd)"
+        command -v "$cmd" >/dev/null || { notify_missing "Der Browser"; exit 1; }
+        exec "$cmd" "$STORE" "${SCALE_ARGS[@]}" "$url"
+        ;;
+    upload)
+        exec /opt/kistengeist/bin/kistengeist-upload
+        ;;
+    mobile)
+        exec /opt/kistengeist/bin/kistengeist-mobile
+        ;;
+    browser)
+        cmd="$(browser_cmd)"
+        command -v "$cmd" >/dev/null || { notify_missing "Der Browser"; exit 1; }
+        exec "$cmd" "$STORE" "${SCALE_ARGS[@]}"
+        ;;
+    files)
+        command -v pcmanfm >/dev/null || { notify_missing "Der Dateimanager"; exit 1; }
+        exec pcmanfm "$HOME"
+        ;;
+    storage)
+        exec /opt/kistengeist/bin/kistengeist-storage
+        ;;
+    power)
+        exec /opt/kistengeist/bin/kistengeist-power
+        ;;
+    *)
+        echo "Aufruf: $0 claude|code|terminal|to-terminal|vscode|n8n|browser|files|upload|mobile|storage|power" >&2
+        exit 2
+        ;;
+esac

@@ -1,0 +1,21 @@
+#!/bin/bash
+# Gibt den Einrichtungscode dieses Geräts aus (legt ihn beim ersten Aufruf an).
+# 10 Zeichen ohne verwechselbare Zeichen; zugleich Passwort des Einrichtungs-WLANs.
+# Vorrang hat ein Code, den das Windows-Werkzeug auf die Boot-Partition geschrieben hat.
+set -euo pipefail
+dir=/etc/kistengeist
+file="$dir/setup-code"
+boot=/boot/firmware/kistengeist-code.txt
+valid() { [[ "$1" =~ ^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{10}$ ]]; }
+mkdir -p "$dir"
+exec 9>"$file.lock"
+flock 9
+code="$(tr -d '[:space:]' <"$file" 2>/dev/null || true)"
+if ! valid "$code"; then
+    code="$(tr -d '[:space:]' <"$boot" 2>/dev/null | tr '[:lower:]' '[:upper:]' || true)"
+    if ! valid "$code"; then
+        code="$(LC_ALL=C tr -dc 'ABCDEFGHJKMNPQRSTUVWXYZ23456789' </dev/urandom | head -c 10)"
+    fi
+    (umask 077; printf '%s\n' "$code" >"$file")
+fi
+printf '%s\n' "$code"

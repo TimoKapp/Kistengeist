@@ -1,0 +1,60 @@
+#!/bin/bash
+# Beim Verbinden des Browsers: Ton auf den Browser (Senke „output“), Mikrofon vom Browser
+# (Quelle „…SelkiesVirtualMic“) als Standard; beim Trennen die vorherigen Standards zurück.
+set -u
+state="${XDG_RUNTIME_DIR:-/tmp}/kistengeist-audio.prev"
+log="${XDG_RUNTIME_DIR:-/tmp}/kistengeist-audio.log"
+note() { echo "$(date +%T) $*" >>"$log"; }
+
+# Standard-Ausgabe/-Eingabe, die nicht von Selkies stammt (Selkies setzt „output“ teils selbst als
+# Standard, bevor dieser Hook läuft): sonst die erste andere vorhandene.
+own_sink() {
+    local cur
+    cur="$(pactl get-default-sink 2>/dev/null)"
+    case "$cur" in output|"") pactl list short sinks | awk '$2 != "output" {print $2; exit}' ;; *) echo "$cur" ;; esac
+}
+own_source() {
+    local cur
+    cur="$(pactl get-default-source 2>/dev/null)"
+    case "$cur" in output.monitor|*SelkiesVirtualMic|"")
+        pactl list short sources | awk '$2 != "output.monitor" && $2 !~ /SelkiesVirtualMic$/ {print $2; exit}' ;;
+        *) echo "$cur" ;;
+    esac
+}
+case "${1:-}" in
+    connect)
+        # Selkies legt Senke und Mikrofon kurz nach dem Verbinden an.
+        for _ in $(seq 1 20); do
+            pactl list short sinks | grep -q $'\toutput\t' && break
+            sleep 0.5
+        done
+        [ -f "$state" ] || printf '%s\n%s\n' "$(own_sink)" "$(own_source)" >"$state"
+        pactl set-default-sink output 2>/dev/null || true
+        mic="$(pactl list short sources | awk '$2 ~ /SelkiesVirtualMic$/ {print $2; exit}')"
+        [ -n "$mic" ] && pactl set-default-source "$mic"
+        note "verbunden: vorher $(tr '\n' ' ' <"$state"), jetzt output / ${mic:-kein Mikrofon}"
+        ;;
+    disconnect)
+        if [ -f "$state" ]; then
+            { read -r sink; read -r source; } <"$state"
+            [ -n "${sink:-}" ] || sink="$(own_sink)"
+            [ -n "${source:-}" ] || source="$(own_source)"
+            restore() {
+                [ -n "${sink:-}" ] && pactl set-default-sink "$sink" 2>/dev/null
+                [ -n "${source:-}" ] && pactl set-default-source "$source" 2>/dev/null
+            }
+            restore
+            rm -f "$state"
+            note "getrennt: Standard zurück auf ${sink:-?} / ${source:-?}"
+            # Selkies räumt erst einige Sekunden nach dem Trennen auf und kann dabei „output“ wieder
+            # zum Standard machen – danach noch einmal zurückstellen (außer bei erneutem Verbinden).
+            (
+                sleep 8
+                [ -f "$state" ] && exit 0
+                restore
+                note "nachgezogen: $(pactl get-default-sink 2>/dev/null) / $(pactl get-default-source 2>/dev/null)"
+            ) >/dev/null 2>&1 &
+        fi
+        ;;
+esac
+exit 0

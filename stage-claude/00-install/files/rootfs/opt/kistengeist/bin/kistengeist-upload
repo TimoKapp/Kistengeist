@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""Upload-Fenster von Kistengeist.
+
+Zeigt Adresse und QR-Code, unter denen PC oder Handy Dateien an den Pi schicken
+können. Der Zugang gilt nur, solange dieses Fenster offen ist (und höchstens
+30 Minuten ohne Upload). Angekommene Dateien lassen sich direkt an Claude senden.
+"""
+
+from __future__ import annotations
+
+import errno
+import os
+import queue
+import socket
+import subprocess
+import sys
+import tempfile
+import threading
+
+sys.path.insert(0, "/opt/kistengeist/lib")
+import kistengeist_links as links  # noqa: E402
+import kistengeist_upload as up  # noqa: E402
+
+UPLOADS = os.path.join(os.path.expanduser("~"), "Uploads")
+
+
+def local_ip() -> str:
+    """IPv4-Adresse, über die der Pi im Heimnetz erreichbar ist ("" ohne Netzwerk)."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("192.0.2.1", 9))  # nur Routenwahl, es wird nichts gesendet
+            ip = s.getsockname()[0]
+    except OSError:
+        return ""
+    return "" if ip.startswith("127.") else ip
+
+
+class App:
+    def __init__(self) -> None:
+        import tkinter as tk
+        from tkinter import messagebox, ttk
+
+        self.tk, self.ttk, self.messagebox = tk, ttk, messagebox
+        self.events: queue.Queue[str] = queue.Queue()
+        try:
+            self.server = up.UploadServer(UPLOADS, on_file=self.events.put,
+                                          on_send=lambda p: links.send_file_to_claude(p, UPLOADS))
+        except OSError as exc:
+            if exc.errno == errno.EADDRINUSE and subprocess.call(
+                    ["wmctrl", "-x", "-a", "kistengeist-upload"], stderr=subprocess.DEVNULL) == 0:
+                sys.exit(0)  # Fenster läuft schon und wurde nach vorn geholt
+            tk.Tk().withdraw()
+            text = ("Port 8765 ist belegt – läuft der Upload schon in einem anderen Fenster?"
+                    if exc.errno == errno.EADDRINUSE else f"Upload konnte nicht starten: {exc}")
+            messagebox.showerror("Upload", text)
+            sys.exit(1)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.ip = local_ip()
+        self.url = self.build_url()
+
+        self.root = tk.Tk(className="kistengeist-upload")
+        self.root.title("Dateien empfangen")
+        self.root.geometry("560x640")
+        self.root.protocol("WM_DELETE_WINDOW", self.close)
+
+        frame = ttk.Frame(self.root, padding=16)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, text="Dateien an Kistengeist senden", font=("Sans", 14, "bold")).pack(anchor="w")
+        ttk.Label(frame, wraplength=520, justify="left",
+                  text="QR-Code mit dem Handy scannen oder die Adresse am PC im Browser öffnen. "
+                       "Der Zugang gilt, solange dieses Fenster offen ist.").pack(anchor="w", pady=(4, 12))
+
+        self.qr_label = ttk.Label(frame, anchor="center", wraplength=500, justify="center")
+        self.qr_label.pack(pady=4)
+        self.url_box = ttk.Entry(frame, width=60)
+        self.url_box.pack(fill="x", pady=8)
+        self.renew_button = ttk.Button(frame, text="Zugang neu starten", command=self.renew)
+        self.show_access()
+
+        ttk.Label(frame, text="Empfangen", font=("Sans", 11, "bold")).pack(anchor="w", pady=(8, 2))
+        self.listbox = tk.Listbox(frame, height=8, activestyle="none")
+        self.listbox.pack(fill="both", expand=True)
+
+        buttons = ttk.Frame(frame)
+        buttons.pack(fill="x", pady=(10, 0))
+        ttk.Button(buttons, text="An Claude senden", command=self.send_selected).pack(side="left")
+        ttk.Button(buttons, text="Ordner öffnen", command=self.open_folder).pack(side="left", padx=8)
+        ttk.Button(buttons, text="Schließen", command=self.close).pack(side="right")
+
+        self.status = ttk.Label(frame, text="Bereit.", foreground="#6b6862")
+        self.status.pack(anchor="w", pady=(8, 0))
+        self.root.after(500, self.poll)
+
+    def build_url(self) -> str:
+        return f"http://{self.ip}:{up.PORT}/?t={self.server.token}" if self.ip else ""
+
+    def make_qr(self):
+        """QR-Code als Bild (qrencode); ohne qrencode nur die Adresse."""
+        fd, path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        try:
+            subprocess.run(["qrencode", "-s", "6", "-m", "2", "-o", path, self.url],
+                           check=True, capture_output=True)
+            return self.tk.PhotoImage(file=path)
+        except (OSError, subprocess.CalledProcessError, self.tk.TclError):
+            return None
+        finally:
+            os.unlink(path)
+
+    def show_access(self, expired: bool = False) -> None:
+        """QR-Code und Adresse anzeigen – oder erklären, warum es gerade keine gibt."""
+        self.url_box.configure(state="normal")
+        self.url_box.delete(0, "end")
+        if expired or not self.url:
+            self.qr_image = None
+            self.qr_label.configure(image="", text=(
+                "Zugang abgelaufen (30 Minuten ohne Upload)." if expired
+                else "Kein Netzwerk – bitte den Pi mit WLAN oder Kabel verbinden."))
+            if expired:
+                self.renew_button.pack(pady=4)
+        else:
+            self.qr_image = self.make_qr()
+            self.qr_label.configure(image=self.qr_image or "", text="" if self.qr_image else "(QR-Code nicht verfügbar)")
+            self.url_box.insert(0, self.url)
+            self.renew_button.pack_forget()
+        self.url_box.configure(state="readonly")
+
+    def renew(self) -> None:
+        self.server.renew()
+        self.ip = local_ip()
+        self.url = self.build_url()
+        self.expired_shown = False
+        self.show_access()
+        self.status.configure(text="Neuer Zugang – bitte den neuen QR-Code scannen.")
+
+    def poll(self) -> None:
+        while not self.events.empty():
+            path = self.events.get()
+            self.listbox.insert(0, os.path.basename(path))
+            self.status.configure(text=f"Angekommen: {os.path.basename(path)}")
+        # Server läuft weiter und antwortet mit „abgelaufen“; hier nur die Anzeige anpassen.
+        if self.server.expired():
+            if not getattr(self, "expired_shown", False):
+                self.expired_shown = True
+                self.show_access(expired=True)
+        else:
+            ip = local_ip()
+            if ip != self.ip:  # Netzwerk gewechselt oder gerade verbunden
+                self.ip, self.url = ip, ""
+                self.url = self.build_url()
+                self.show_access()
+        self.root.after(1000, self.poll)
+
+    def send_selected(self) -> None:
+        selection = self.listbox.curselection()
+        if not selection:
+            self.messagebox.showinfo("Upload", "Bitte zuerst eine empfangene Datei auswählen.")
+            return
+        path = os.path.join(UPLOADS, self.listbox.get(selection[0]))
+        links.send_file_to_claude(path, UPLOADS)
+
+    def open_folder(self) -> None:
+        subprocess.Popen(["pcmanfm", UPLOADS] if os.path.exists("/usr/bin/pcmanfm") else ["xdg-open", UPLOADS])
+
+    def close(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+        self.root.destroy()
+
+    def run(self) -> None:
+        self.root.mainloop()
+
+
+if __name__ == "__main__":
+    App().run()

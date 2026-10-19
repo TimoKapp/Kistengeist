@@ -1,0 +1,30 @@
+#!/bin/bash
+# Dauerdienst für die Handy-Steuerung: wartet, bis Claude Code installiert und mit
+# einem claude.ai-Abo angemeldet ist, und startet dann "claude remote-control"
+# (Server-Modus). Die einmalige Zustimmung zu Remote Control gibt man im Fenster
+# „Handy“ (Knopf „Anmelden“), denn ein Hintergrunddienst kann nicht nachfragen.
+set -u
+
+mkdir -p "$HOME/Projekte"
+cd "$HOME/Projekte" || exit 1
+
+claude_bin() { command -v claude || { [ -x "$HOME/.local/bin/claude" ] && echo "$HOME/.local/bin/claude"; }; }
+
+# Remote Control braucht eine Anmeldung über claude.ai (kein API-Schlüssel).
+logged_in_with_subscription() {
+    "$1" auth status 2>/dev/null | python3 -c '
+import json, sys
+try:
+    sys.exit(0 if json.load(sys.stdin).get("authMethod") == "claude.ai" else 1)
+except ValueError:
+    sys.exit(1)'
+}
+
+until bin="$(claude_bin)" && [ -n "$bin" ] && logged_in_with_subscription "$bin"; do
+    echo "Claude Code ist nicht mit einem claude.ai-Abo angemeldet – im Fenster Handy anmelden. Neuer Versuch in 60 s."
+    sleep 60
+done
+
+echo "Starte Remote Control in $HOME/Projekte."
+export TERM=dumb
+exec "$bin" remote-control --name Kistengeist --spawn same-dir --verbose </dev/null

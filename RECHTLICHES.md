@@ -1,0 +1,144 @@
+# Rechtliche Hinweise, KI-Hinweis und Datenschutz
+
+_Stand 2026-10-17 · Version 40462db4c96d_
+
+Bitte vor der Installation vollständig lesen. Die Installation startet erst, wenn du die Hinweise aktiv bestätigt hast. Dies ist keine Rechtsberatung.
+
+## 1. Was Kistengeist ist – und was nicht
+
+Kistengeist ist ein unabhängiges Open-Source-Projekt; diese Fassung wird unentgeltlich bereitgestellt. Es richtet einen Raspberry Pi so ein, dass er mit offiziellen Programmen von Drittanbietern (u. a. Claude Desktop und Claude Code von Anthropic, Google Chrome) arbeitet.
+
+Es ist **kein offizielles Produkt** von Anthropic, Google oder der Raspberry Pi Ltd. und wird von diesen weder unterstützt noch geprüft. „Claude“ und „Anthropic“ sind Marken der Anthropic, PBC; „Google Chrome“ ist eine Marke der Google LLC; „Raspberry Pi“ ist eine Marke der Raspberry Pi Ltd.
+
+Die Programme der Drittanbieter werden nicht mit diesem Image verteilt, sondern während der Installation direkt aus den offiziellen Paketquellen der Hersteller geladen.
+
+## 2. KI-Hinweis
+
+**Diese Software wurde mit Hilfe von KI erstellt.** Programmcode, Texte und Konfiguration von Kistengeist wurden überwiegend von einem KI-System (Claude von Anthropic) erzeugt; ein Mensch hat sie beauftragt, aber nicht vollständig im Detail geprüft. Die Software ist noch nicht auf echter Hardware getestet.
+
+**Claude ist eine künstliche Intelligenz, kein Mensch.** Wenn du mit Claude schreibst oder sprichst, interagierst du mit einem KI-System. (Freiwilliger Hinweis; die Transparenzpflichten nach Art. 50 der KI-Verordnung (EU) 2024/1689 treffen den Anbieter Anthropic.)
+
+**KI-Ausgaben können falsch, unvollständig oder veraltet sein.** Prüfe wichtige Ergebnisse selbst, bevor du dich darauf verlässt – besonders bei Gesundheit, Recht, Finanzen und Sicherheit. Auch Anthropic weist darauf hin, dass Ausgaben nicht immer zutreffen.
+
+Claude kann auf diesem Gerät Befehle ausführen, Dateien ändern und – wenn du es erlaubst – den Browser steuern. Bestätige Aktionen nur, wenn du sie verstehst.
+
+## 3. Datenschutz: Was dieses System selbst speichert
+
+**Der Ersteller von Kistengeist erhebt, empfängt und speichert keine Daten von dir.** Das System enthält keine eigene Telemetrie, keine Werbung und kein Tracking.
+
+Lokal auf dem Pi werden gespeichert: deine Einstellungen aus der Einrichtung (Zugangsart, Module, Region) in /etc/kistengeist/setup.conf, ein Installationsprotokoll in /var/log/kistengeist/, die Bestätigung dieser Hinweise (nur Datum und Textversion) sowie deine eigenen Dateien (z. B. Uploads, Projekte).
+
+Dein Passwort wird nicht im Klartext gespeichert, sondern nur als gesalzener Hash (in /etc/shadow) hinterlegt. Für die RDP-Spiegelung („beides“) wird ein VNC-Passwort in verschleierter Form in deinem Benutzerordner abgelegt.
+
+Die Programme der Drittanbieter speichern zusätzlich eigene Daten lokal: Claude-Code-Verläufe unter ~/.claude/ (standardmäßig 30 Tage, Sitzungen aus Claude Desktop auch länger), die Anmeldedaten von Claude Desktop im Schlüsselbund, die Anmeldung von Claude Code in der Datei ~/.claude/.credentials.json (unverschlüsselt, nur für deinen Benutzer lesbar) und Verlauf sowie Profil von Chrome.
+
+Das Terminal-Panel speichert deine eigenen Befehle in ~/.config/kistengeist/commands.json und die gewählte Ansicht in ~/.config/kistengeist/panel.json. Die Übergabe von Text aus Claude Desktop an das Terminal läuft über einen lokalen MCP-Server auf dem Pi und überträgt dabei selbst nichts ins Internet.
+
+**USB-Stick, Zugangsdaten-Datei:** Wählst du einen USB-Stick, wird er auf Wunsch formatiert (alle Daten darauf werden gelöscht) und dauerhaft eingebunden. Am Ende entsteht ~/Zugangsdaten.txt (nur für deinen Benutzer lesbar) mit Adressen, Ports und – wenn gewählt – Passwörtern und Token im Klartext; optional eine Kopie auf dem unverschlüsselten USB-Stick. Token bzw. DDNS-Key des DynDNS-Anbieters liegen dauerhaft in /etc/kistengeist/ddns.json (nur root). n8n speichert Workflows, Zugangsdaten (verschlüsselt) und den Schlüssel unter /srv/n8n; täglich werden Workflows und die verschlüsselten Zugangsdaten auf den USB-Stick gesichert, der Schlüssel bleibt nur auf dem Pi.
+
+Hochgeladene Dateien liegen dauerhaft in ~/Uploads, Projekte in ~/Projekte, bis du sie löschst. Das Systemprotokoll (journald, max. 64 MB) enthält u. a. Zugriffe auf den Einrichtungsassistenten mit IP-Adressen der Geräte im Heimnetz.
+
+**Desktop im Browser** (Fernzugriff „Browser“): Der Pi stellt seinen Bildschirm, Ton und – nach deiner Freigabe im Browser – das Mikrofon über https://kistengeist.local:8443 bereit, nur im Heimnetz. Die Übertragung bleibt im Heimnetz und ist verschlüsselt (selbst ausgestelltes Zertifikat). Das Passwort dafür liegt nur für deinen Benutzer lesbar in ~/.config/kistengeist/selkies.env.
+
+## 4. Datenschutz: Übertragungen an Drittanbieter
+
+Sobald du Claude nutzt, werden deine Eingaben, Dateien, die du Claude gibst, und die Antworten an **Anthropic** übertragen und dort verarbeitet. Verantwortlich für Nutzer im EWR ist die **Anthropic Ireland, Limited**, 6th Floor, South Bank House, Barrow Street, Dublin 4, D04 TR29, Irland (Datenschutz: privacy@anthropic.com, DPO: dpo@anthropic.com). Übermittlungen in die USA stützt Anthropic laut eigener Datenschutzerklärung auf Angemessenheitsbeschlüsse, Standardvertragsklauseln und in Einzelfällen Ausnahmen nach Art. 49 DSGVO.
+
+Speicherdauer bei Anthropic (Free/Pro/Max): 30 Tage, wenn du der Nutzung zur Modellverbesserung widersprichst; bis zu 5 Jahre, wenn du sie erlaubst. Einstellen kannst du das jederzeit unter [claude.ai/settings/data-privacy-controls](https://claude.ai/settings/data-privacy-controls). Ausnahmen laut Anthropic: Als Verstoß gegen die Nutzungsrichtlinie markierte Inhalte bis zu 2 Jahre (Einstufungen bis zu 7 Jahre); Feedback (Daumen, /feedback, /bug) 5 Jahre. Gelöschte Unterhaltungen werden innerhalb von 30 Tagen aus den Systemen entfernt. Gesetzliche Aufbewahrungspflichten bleiben vorbehalten.
+
+**Remote Control und Dispatch (Handy):** Während eine Sitzung mit dem Handy verbunden ist, speichert Anthropic den Verlauf, um ihn zwischen deinen Geräten abzugleichen. Push-Nachrichten laufen über Anthropic und den Push-Dienst des Handy-Betriebssystems (bei iPhones Apple, bei Android Google).
+
+**Claude Code** sendet zusätzlich Nutzungsmetriken (ohne Code, Eingaben oder Dateipfade) und – bei Pro/Max – Fehlerberichte an Anthropic bzw. von Anthropic beauftragte Dienstleister. Die Einrichtung kann Fehlerberichte und Umfragen abschalten (siehe Schritt „Konto und Region“).
+
+**Google Chrome** überträgt Daten an Google gemäß den Google-Datenschutzbestimmungen (z. B. Updates, Safe Browsing, ggf. Synchronisierung). Ist Chrome nicht verfügbar, wird Chromium aus Debian installiert.
+
+**Graphify** (Modul „Graphify“) wird bei der Einrichtung von PyPI (Python Package Index) geladen. Code analysiert es lokal; Texte, PDFs und Bilder wertet beim Aufruf von /graphify Claude Code über dein Claude-Konto aus (Datenschutz von Anthropic). Ergebnisse liegen im Ordner graphify-out des jeweiligen Projekts. Die Ansicht graph.html lädt beim Öffnen eine Bibliothek von unpkg.com (andere Ansichten von d3js.org/jsdelivr.net); gibst du Web- oder GitHub-Adressen an, lädt Graphify diese aus dem Internet. Graphify selbst sendet keine Telemetrie.
+
+**Visual Studio Code** (Modul „VS Code“) überträgt Daten an Microsoft gemäß der Microsoft-Datenschutzerklärung (u. a. Nutzungs- und Absturzdaten, Updates, Erweiterungs-Marktplatz). Mit „Datensparsam“ wird die Telemetrie von VS Code abgeschaltet; Erweiterungen und deren Updates werden weiterhin von Microsoft geladen. Die Erweiterung „Claude Code for VS Code“ überträgt deine Eingaben wie Claude Code an Anthropic.
+
+**Webserver und Internet-Erreichbarkeit** (Module „Webserver“, „n8n“): Mit DynDNS prüft der Pi alle 5 Minuten seine öffentliche IPv4-Adresse über api.ipify.org (ersatzweise icanhazip.com) und überträgt sie bei jeder Änderung, sonst einmal täglich, an den gewählten Anbieter (ipv64.net – Deutschland, dynv6 – Deutschland, No-IP – USA, DuckDNS – USA); Let's Encrypt prüft beim Ausstellen des HTTPS-Zertifikats deine Adresse, und jedes Zertifikat wird in öffentlichen Certificate-Transparency-Protokollen veröffentlicht (deine Adresse ist damit öffentlich auffindbar). Mit Tailscale Funnel läuft der Zugriff über die Server von Tailscale Inc. (USA). **n8n** wird als Docker-Image von Docker Hub geladen (Docker Inc. sieht deine IP-Adresse) und sendet ohne „Datensparsam“ Telemetrie an n8n GmbH (Berlin); Versions- und Sicherheitshinweise sowie Vorlagen ruft n8n immer bei api.n8n.io ab. Was deine Workflows an Dritte senden, bestimmst du selbst.
+
+**Claude in Chrome** (vorinstallierte Erweiterung): Wenn du Claude den Browser steuern lässt, werden Seiteninhalte und Bildschirmfotos der geöffneten Webseiten – auch von Seiten, bei denen du angemeldet bist – an Anthropic übertragen. **Claude Desktop und Cowork** übertragen ebenfalls Nutzungs- und technische Daten an Anthropic (siehe Datenschutzerklärung).
+
+**Installation, Updates und Grundsystem:** Bei der Einrichtung prüft der Pi die Internetverbindung über downloads.claude.ai. Beim Laden von Paketen und bei den (mit dem Modul „Automatische Updates“ täglichen) Update-Prüfungen sehen die Server von Debian, Raspberry Pi Ltd., Anthropic und Google deine IP-Adresse; Claude Code aktualisiert sich zusätzlich selbst. Die Uhrzeit wird über öffentliche Zeitserver (NTP) gestellt. Im Heimnetz macht sich der Pi per mDNS als „kistengeist.local“ bekannt. Beim ersten Start liest das System (cloud-init) Einstellungen von der Boot-Partition, die Raspberry Pi Imager dort ablegt (z. B. WLAN).
+
+Die Nutzungs- und Datenschutzbedingungen der Drittanbieter akzeptierst du jeweils selbst, wenn du dich in den Programmen anmeldest. Rechte als betroffene Person (Auskunft, Löschung usw.) machst du direkt beim jeweiligen Anbieter geltend.
+
+Beim Fernzugriff „Browser“ lädt der Pi bei der Einrichtung das Selkies-Paket von GitHub (GitHub sieht deine IP-Adresse). Im Betrieb fließen Bild, Ton und Mikrofon nur zwischen deinem Browser und dem Pi im Heimnetz.
+
+## 5. Deine Verantwortung
+
+Für Claude gilt laut Anthropic ein **Mindestalter von 18 Jahren** (bzw. das höhere gesetzliche Mindestalter in deinem Land). Du brauchst ein eigenes Konto bei Anthropic; einige Funktionen setzen ein bezahltes Abo voraus.
+
+**Dein Claude-Konto ist persönlich.** Laut Nutzungsbedingungen von Anthropic darfst du es niemand anderem zur Verfügung stellen. Bei automatischer Anmeldung kann jeder, der am Pi sitzt, dein Konto nutzen. Lass andere Personen – insbesondere Kinder und Jugendliche unter 18 – den Pi nicht mit deinem Konto verwenden. Jede Person braucht ein eigenes Konto.
+
+Halte dich an die Nutzungsbedingungen und die Nutzungsrichtlinie (Usage Policy) von Anthropic sowie an die Bedingungen von Google und geltendes Recht.
+
+Nutzt du den Pi ausschließlich privat oder im Familienkreis, gilt in der Regel die Haushaltsausnahme der DSGVO (Art. 2 Abs. 2 lit. c). **Verarbeitest du Daten Dritter außerhalb dieses rein persönlichen Rahmens (z. B. beruflich, im Verein, Kundendaten), bist du dafür selbst datenschutzrechtlich verantwortlich** – informiere die Betroffenen und prüfe, ob du die Daten an Anthropic übermitteln darfst.
+
+Gib Claude keine Zugangsdaten, Gesundheits- oder andere besonders sensible Daten, wenn das nicht nötig ist.
+
+**Erreichbarkeit aus dem Internet:** Wenn du Ports am Router freigibst oder Tailscale Funnel nutzt, ist der Pi für jeden im Internet erreichbar. Du bist dann selbst für sichere Passwörter, Updates und die Inhalte verantwortlich, die du bereitstellst (z. B. Impressumspflicht bei geschäftsmäßigen Angeboten). n8n hatte 2025/2026 mehrere kritische Sicherheitslücken; der Pi aktualisiert n8n deshalb wöchentlich automatisch. Gib niemals RDP, SSH oder n8n direkt (Port 5678) frei.
+
+## 6. Sicherheitshinweise
+
+Der Einrichtungsassistent ist bis zum Ende der Installation **ohne Anmeldung im Heimnetz erreichbar**. Schließe die Einrichtung zügig ab.
+
+Das Einrichtungs-WLAN „Kistengeist-Setup“ und der Setup-Assistent sind mit einem zufälligen Einrichtungscode pro Gerät geschützt (angezeigt am Bildschirm des Pi, im Windows-Werkzeug bzw. am Ende von install.sh); das WLAN existiert nur, solange der Pi weder eingerichtet ist noch Internet hat.
+
+Bei automatischer Anmeldung ist der Schlüsselbund (mit deiner Claude-Anmeldung) nicht durch ein Passwort geschützt. Wer physischen Zugriff auf den Pi oder die Speicherkarte hat, kann Daten und die Claude-Code-Anmeldung auslesen (die Speicherkarte ist nicht verschlüsselt).
+
+RDP-Spiegelung („beides“) prüft nur die ersten 8 Zeichen des Passworts. Upload und RDP sind nur im Heimnetz gedacht – gib die Ports nicht ins Internet frei.
+
+Upload und Einrichtungsassistent nutzen unverschlüsseltes HTTP; Dateien und das Passwort sind im Netzwerk nicht verschlüsselt. Im Einrichtungs-WLAN mit öffentlich bekanntem Passwort können Mithörende in Funkreichweite den Datenverkehr mitlesen.
+
+## 7. Lizenzen
+
+Das Grundsystem (Raspberry Pi OS / Debian) besteht überwiegend aus Open-Source-Software unter den jeweiligen Lizenzen (u. a. GPL, LGPL, MIT, BSD); die Lizenztexte liegen auf dem Pi unter /usr/share/doc/. Die Firmware des Raspberry Pi wird unter ihrer eigenen Weitergabelizenz bereitgestellt (/boot/firmware/LICENCE.broadcom).
+
+Claude Desktop, Claude Code, die Erweiterung „Claude Code for VS Code“, Google Chrome und Visual Studio Code sind proprietäre Software der jeweiligen Hersteller (Anthropic, Google, Microsoft) und unterliegen deren Lizenz- und Nutzungsbedingungen.
+
+**n8n** steht unter der „Sustainable Use License“ (fair-code, kein Open Source): Nutzung für private, nicht-kommerzielle oder eigene interne Zwecke ist erlaubt; der Weiterverkauf als eigenes Produkt nicht. Caddy und Graphify (graphifyy, Graphify Labs) stehen unter der Apache-Lizenz 2.0, Docker (docker.io) unter Apache 2.0, Tailscale-Client unter BSD-3-Clause. ipv64.net, dynv6, No-IP, DuckDNS, Let's Encrypt und Tailscale sind Dienste mit eigenen Nutzungsbedingungen.
+
+**Selkies** (Desktop im Browser) steht unter der Mozilla Public License 2.0; enthaltene Video-Encoder (x264/x265) unter der GPL. Das Paket wird bei der Einrichtung von GitHub (selkies-project) geladen und per Prüfsumme kontrolliert.
+
+## 8. Gewährleistung und Haftung
+
+Kistengeist wird unentgeltlich und **ohne Gewähr** bereitgestellt, so wie es ist. Es befindet sich in Entwicklung, ist nicht umfassend auf echter Hardware getestet und kann Fehler enthalten, die zu Datenverlust oder Fehlfunktionen führen.
+
+Kistengeist wird unentgeltlich überlassen. Für Mängel hafte ich nur, wenn ich sie arglistig verschwiegen habe (§§ 524, 600 BGB); im Übrigen hafte ich nur für Vorsatz und grobe Fahrlässigkeit (§§ 521, 599 BGB). Unberührt bleibt die Haftung, soweit sie gesetzlich zwingend ist, insbesondere bei Verletzung von Leben, Körper oder Gesundheit und nach dem Produkthaftungsgesetz. Lege von wichtigen Daten Sicherungskopien an.
+
+## 9. Daten löschen, Deinstallation, Kontakt
+
+**Daten bei Anthropic:** in claude.ai unter Einstellungen Unterhaltungen oder das Konto löschen, oder an privacy@anthropic.com wenden.
+
+**Lokal:** ~/.claude, ~/.claude.json, die Daten von Claude Desktop (in der Regel ~/.config/Claude), das Chrome-Profil (~/.config/google-chrome) sowie ~/Uploads und ~/Projekte löschen.
+
+**Vollständig:** vorher in Claude abmelden und die Sitzung „Kistengeist“ in der Claude-App entfernen, dann die Speicherkarte mit Raspberry Pi Imager neu beschreiben oder sicher löschen.
+
+**Kontakt zum Projekt:** über das GitHub-Repository TimoKapp/kistengeist. Für den Verkauf vorinstallierter Geräte gelten eigene Vertrags- und Pflichtangaben des jeweiligen Anbieters.
+
+## 10. Weiterführende Links
+
+[Anthropic – Nutzungsbedingungen (Consumer Terms)](https://www.anthropic.com/legal/consumer-terms)
+
+[Anthropic – Datenschutzerklärung](https://www.anthropic.com/legal/privacy)
+
+[Anthropic – Nutzungsrichtlinie (Usage Policy)](https://www.anthropic.com/legal/aup)
+
+[Claude Code – Datenverwendung](https://code.claude.com/docs/en/data-usage)
+
+[Google Chrome – Nutzungsbedingungen](https://www.google.com/chrome/terms/)
+
+[Google – Datenschutzerklärung](https://policies.google.com/privacy)
+
+[Google Chrome – Datenschutzhinweis](https://www.google.com/chrome/privacy/)
+
+[EU-KI-Verordnung (EU) 2024/1689](https://eur-lex.europa.eu/eli/reg/2024/1689/oj)
+
+## Bestätigung bei der Installation
+
+- [ ] Ich habe die rechtlichen Hinweise, den KI-Hinweis und die Datenschutzinformationen vollständig gelesen und verstanden.
+- [ ] Ich bin mindestens 18 Jahre alt (bzw. habe das in meinem Land geltende Mindestalter für Claude erreicht) und lasse niemanden unter 18 Jahren und keine andere Person mein Claude-Konto auf diesem Gerät nutzen.
+- [ ] Mir ist bewusst, dass bei der Nutzung von Claude, Chrome und den Handy-Funktionen Daten an Anthropic bzw. Google übertragen werden, und dass ich deren Bedingungen selbst akzeptiere.
+- [ ] Ich nutze Kistengeist auf eigenes Risiko und weiß, dass es KI-generiert, ohne Gewähr und noch nicht vollständig getestet ist.

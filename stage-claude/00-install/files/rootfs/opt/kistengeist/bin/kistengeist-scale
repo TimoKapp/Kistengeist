@@ -1,0 +1,44 @@
+#!/bin/bash
+# Schriftgröße der Claude-Oberfläche wählen (bei der ersten Anmeldung und über das Ausschalten-Menü).
+#   kistengeist-scale            Auswahl zeigen, anwenden, Leiste neu laden, Claude-Neustart anbieten
+#   kistengeist-scale --first    nur, wenn noch nie gewählt (vor dem Start von Claude, ohne Neustart)
+set -u
+lib=/opt/kistengeist/lib/kistengeist_scale.py
+current="$(python3 "$lib" get)"
+if [ "${1:-}" = "--first" ] && [ -n "$current" ]; then
+    exit 0
+fi
+cur="${current:-100}"
+rows=()
+for s in 100 125 150 175 200; do
+    hint=""
+    case "$s" in
+        100) hint="Normal" ;;
+        150) hint="Gut für große Bildschirme" ;;
+        200) hint="Für 4K bzw. sehr hohe RDP-Auflösung" ;;
+    esac
+    rows+=("$([ "$s" = "$cur" ] && echo TRUE || echo FALSE)" "$s %" "$hint")
+done
+choice="$(zenity --list --radiolist --title "Schriftgröße" \
+    --text "Wie groß sollen Schrift, Symbole und Leiste sein?\nÄndern kannst du das später über Ausschalten, Eintrag Schriftgröße." \
+    --column "" --column "Größe" --column "" "${rows[@]}" --width 460 --height 380 --timeout 120 2>/dev/null)"
+choice="${choice%% %}"
+case "$choice" in
+    100 | 125 | 150 | 175 | 200) ;;
+    *)
+        # Abgebrochen: bei der ersten Anmeldung trotzdem merken (100 %), damit nicht jedes Mal gefragt wird.
+        [ -z "$current" ] && python3 "$lib" set 100 && xrdb -merge "$HOME/.Xresources" 2>/dev/null
+        exit 0
+        ;;
+esac
+python3 "$lib" set "$choice"
+xrdb -merge "$HOME/.Xresources" 2>/dev/null || true
+[ "${1:-}" = "--first" ] && exit 0
+
+# Leiste mit neuer Größe neu starten
+/opt/kistengeist/bin/kistengeist-autostart --panel-only
+if zenity --question --title "Schriftgröße" --width 380 \
+    --text "Claude übernimmt die neue Größe nach einem Neustart (der Mauszeiger nach Ab- und Anmelden). Claude jetzt neu starten?" 2>/dev/null; then
+    # Nur eigene Prozesse; die Startschleife in kistengeist-autostart startet Claude gleich wieder.
+    pkill -u "$(id -u)" -f '(^|/)claude-desktop( |$)' 2>/dev/null || true
+fi

@@ -1,0 +1,12 @@
+[Unit]
+Description=Kistengeist Einrichtungs-WLAN, falls kein Internet vorhanden ist
+After=NetworkManager.service
+Wants=NetworkManager.service
+ConditionPathExists=!/etc/kistengeist/installed
+
+[Service]
+Type=exec
+ExecStart=/opt/kistengeist/bin/kistengeist-hotspot start
+
+[Install]
+WantedBy=multi-user.target
