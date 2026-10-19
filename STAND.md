@@ -99,7 +99,14 @@ Speicherverwaltung, Ausschalten. Erweiterbar über Module, MCP und Plugins.
   mit Wiederholungen und startet ihn mit `KG_START_CONSOLE=1`.
 - CI: Windows-Runner schreibt echt auf eine VHDX und prüft die Boot-Partition; Debian 13 prüft user-data
   mit `cloud-init schema`, network-config mit `netplan generate`, Erststart-Skript mit Shellcheck.
-- Noch offen: Test auf echter Hardware (Pi 4 + Windows 10/11, SmartScreen/Smart App Control; unsigniert).
+- Erststart: endlose Wiederholung mit Anzeige auf tty1, `Restart=on-failure`; nach der Einrichtung werden
+  Code und WLAN-Passwort auf der Boot-Partition geschwärzt und cloud-init abgeschaltet (finalize).
+- CI grün (19.10.2026, Lauf 5): echter Imager 2.0.12 schreibt Raspberry Pi OS Lite 2026-10-06 auf eine
+  16-GB-VHDX; Boot-Partition mit user-data/network-config/meta-data/ds=nocloud geprüft.
+- Zwei unabhängige Prüfungen (Windows-Werkzeug, Sicherheit) durchgeführt und umgesetzt.
+- Noch offen: Test auf echter Hardware (Pi 4 + Windows 10/11, SmartScreen/Smart App Control; unsigniert,
+  ein signierter EXE-Wrapper wäre die kundentaugliche Endstufe); Lizenz (LICENSE) durch den Besitzer;
+  Verkauf: n8n-Lizenz, Commercial Terms von Anthropic, Impressum.
 
 ## Einrichtungscode
 
