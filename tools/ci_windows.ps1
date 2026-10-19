@@ -39,6 +39,9 @@ $store.Open('ReadWrite'); $store.Add($sig.SignerCertificate); $store.Close()
 $p = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -PassThru
 if (-not $p.WaitForExit(600000)) { Err 'Imager-Installation hängt (Treiberabfrage?)'; Stop-Process $p -Force; exit 1 }
 Write-Host "Imager-Installation: Code $($p.ExitCode)"
+Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' |
+    Where-Object { $_.DisplayName -like 'Raspberry Pi Imager*' } |
+    Select-Object DisplayName, DisplayVersion, InstallLocation, DisplayIcon | Format-List | Out-Host
 
 Write-Host '== 2. Ernstfall auf virtuellem Laufwerk'
 $vhd = Join-Path $env:RUNNER_TEMP 'kg.vhdx'

@@ -189,7 +189,11 @@ function Find-Imager {
         if (-not $dir -and $e.DisplayIcon) { $dir = Split-Path ($e.DisplayIcon -replace '"', '' -replace ',\d+$', '') }
         $exe = if ($dir) { Join-Path $dir 'rpi-imager.exe' } else { $null }
         if ($exe -and (Test-Path $exe)) {
-            try { $v = [version]((Get-Item $exe).VersionInfo.ProductVersion -replace '[^0-9.].*$', '') } catch { $v = [version]'0.0' }
+            # Version aus dem Uninstall-Eintrag bzw. der Datei, z. B. „2.0.11.1“ oder „v2.0.11.1“
+            $v = [version]'0.0'
+            foreach ($raw in @($e.DisplayVersion, (Get-Item $exe).VersionInfo.ProductVersion, (Get-Item $exe).VersionInfo.FileVersion)) {
+                if ("$raw" -match '(\d+(\.\d+){1,3})') { try { $v = [version]$Matches[1]; break } catch { } }
+            }
             $found += [pscustomobject]@{ Exe = $exe; Version = $v }
         }
     }
@@ -202,7 +206,7 @@ function Install-Imager {
     & curl.exe --ssl-revoke-best-effort -fL --retry 3 -o $setup $ImagerUrl
     if ($LASTEXITCODE -ne 0) { Fail 'Raspberry Pi Imager konnte nicht geladen werden.' }
     $sig = Get-AuthenticodeSignature $setup
-    if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notlike 'CN=Raspberry Pi Ltd*') {
+    if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch '^CN="?Raspberry Pi (Ltd|Limited)\b') {
         Remove-Item $setup -Force
         Fail "Die Signatur des Imagers ist ungültig ($($sig.Status)). Abbruch."
     }
