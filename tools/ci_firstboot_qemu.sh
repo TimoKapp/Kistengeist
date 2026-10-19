@@ -144,11 +144,14 @@ sed -E 's#^( *url=")[^"]*(")#\1http://10.0.2.2:8000/install.sh\2#' "$art/user-da
 grep -q 'url="http://10.0.2.2:8000/install.sh"' user-data || { echo "::error::Installer-Adresse nicht gefunden"; exit 1; }
 sudo cp user-data "$art/network-config" "$art/meta-data" "$art/cmdline.txt" mnt/boot/
 echo "cmdline.txt (vom Imager): $(cat "$art/cmdline.txt")"
+echo "--- user-data (vom Imager)"; cat user-data
 code="$(python3 - user-data <<'PY'
-import re, sys
-print(re.search(r"setup-code\n(?:\s+\S.*\n)*?\s+content: \|\n\s+([A-Z2-9]{10})\n", open(sys.argv[1]).read()).group(1))
+import sys, yaml
+doc = yaml.safe_load(open(sys.argv[1]))
+print([f for f in doc["write_files"] if f["path"] == "/etc/kistengeist/setup-code"][0]["content"].strip())
 PY
 )"
+[ "${#code}" = 10 ] || { echo "::error::Einrichtungscode nicht in user-data"; exit 1; }
 sudo mkdir -p "mnt/root/usr/lib/modules"
 sudo cp -a "$moddir" "mnt/root/usr/lib/modules/"
 sudo umount mnt/boot mnt/root
