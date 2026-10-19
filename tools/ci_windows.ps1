@@ -1,4 +1,4 @@
-# Windows-Werkzeug echt testen (GitHub-Runner windows-latest, Administrator):
+﻿# Windows-Werkzeug echt testen (GitHub-Runner windows-latest, Administrator):
 #  1. Testbetrieb: Ersteinrichtungsdateien (UTF-8 ohne BOM, LF, Sonderzeichen im WLAN)
 #  2. Ernstfall auf einem virtuellen Laufwerk (VHDX): echter Raspberry Pi Imager, echtes
 #     Raspberry Pi OS Lite, danach Boot-Partition einhängen und Dateien prüfen.
@@ -24,6 +24,21 @@ $code = (Get-Content (Join-Path $out 'code.txt') -Raw).Trim()
 if ($code -notmatch '^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{10}$') { Err "Code ungültig: $code" }
 if ((Get-Content (Join-Path $out 'user-data') -Raw) -notmatch [regex]::Escape($code)) { Err 'Code fehlt in user-data' }
 Remove-Item Env:KG_TEST_OUT, Env:KG_TEST_SSID, Env:KG_TEST_PASS
+
+Write-Host '== 2a. Raspberry Pi Imager vorab installieren'
+# Der Imager-Installer richtet einen USB-Treiber ein; Windows fragt dabei „Gerätesoftware von
+# Raspberry Pi Ltd installieren?“ – auf dem Testrechner sieht niemand das Fenster. Deshalb hier dem
+# (geprüften) Herausgeber vertrauen; beim Kunden erscheint das Fenster normal.
+$setup = Join-Path $env:RUNNER_TEMP 'imager-setup.exe'
+curl.exe -fL --retry 3 -o $setup 'https://downloads.raspberrypi.org/imager/imager_latest.exe'
+$sig = Get-AuthenticodeSignature $setup
+Write-Host "Signatur: $($sig.Status) – $($sig.SignerCertificate.Subject)"
+if ($sig.Status -ne 'Valid') { Err 'Imager-Signatur ungültig'; exit 1 }
+$store = New-Object Security.Cryptography.X509Certificates.X509Store('TrustedPublisher', 'LocalMachine')
+$store.Open('ReadWrite'); $store.Add($sig.SignerCertificate); $store.Close()
+$p = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -PassThru
+if (-not $p.WaitForExit(600000)) { Err 'Imager-Installation hängt (Treiberabfrage?)'; Stop-Process $p -Force; exit 1 }
+Write-Host "Imager-Installation: Code $($p.ExitCode)"
 
 Write-Host '== 2. Ernstfall auf virtuellem Laufwerk'
 $vhd = Join-Path $env:RUNNER_TEMP 'kg.vhdx'

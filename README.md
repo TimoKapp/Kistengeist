@@ -26,8 +26,9 @@ Pi bootet ─► Erster Start? ─ja─► Setup-Assistent im Browser ─► Mod
 
 Drei Wege führen zum selben Ergebnis:
 
-- **Weg 1 – Windows-Installer (empfohlen):** [`Kistengeist-Installer.cmd`](windows/Kistengeist-Installer.cmd)
-  aus dem neuesten [Release](https://github.com/TimoKapp/kistengeist/releases) laden und doppelklicken
+- **Weg 1 – Windows-Installer (empfohlen):** `Kistengeist-Installer.cmd` aus dem neuesten
+  [Release](https://github.com/TimoKapp/kistengeist/releases) laden (nicht die Datei aus dem Quellcode:
+  die Release-Fassung ist auf genau diese Version festgelegt und geprüft) und doppelklicken
   (Windows fragt nach Administratorrechten; bei „Der Computer wurde durch Windows geschützt“ →
   „Weitere Informationen“ → „Trotzdem ausführen“). Das Programm
   1. installiert bei Bedarf den offiziellen **Raspberry Pi Imager**,
@@ -37,7 +38,9 @@ Drei Wege führen zum selben Ergebnis:
      umbaut** (lädt `install.sh`),
   5. zeigt den **Einrichtungscode** und speichert ihn als `Kistengeist-Code.txt` auf dem Desktop.
 
-  Karte in den Pi, Strom an, nach 5–15 Minuten `http://kistengeist.local` öffnen und den Code eingeben.
+  Karte (mindestens 16 GB) in den Pi, Strom an, nach 5–15 Minuten `http://kistengeist.local` öffnen
+  (sonst `http://kistengeist.fritz.box` oder die IP vom Bildschirm des Pi) und den Code eingeben.
+  Fortschritt und Fehler (z. B. „Kein Internet“) stehen am Bildschirm des Pi.
   Fragt Windows beim Schreiben „Datenträger formatieren?“: immer **Abbrechen**.
 - **Weg 2 – fertiges Image:** mit Raspberry Pi Imager schreiben, Schritte unten.
 - **Weg 3 – ein Befehl:** Raspberry Pi OS **Lite (64-bit)** mit Raspberry Pi Imager aufspielen

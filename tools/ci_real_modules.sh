@@ -54,7 +54,7 @@ echo "== Programme und Bibliotheken"
 command -v claude-desktop >/dev/null || err "claude-desktop fehlt"
 command -v google-chrome-stable >/dev/null || command -v chromium >/dev/null || err "Browser fehlt"
 command -v code >/dev/null || err "VS Code fehlt"
-runuser -u claude -- bash -lc '~/.local/bin/claude --version' || err "Claude Code (CLI) startet nicht"
+runuser -u claude -- bash -lc '"$HOME"/.local/bin/claude --version' || err "Claude Code (CLI) startet nicht"
 runuser -u claude -- env HOME=/home/claude code --list-extensions | tee /tmp/ext.txt
 grep -qi '^anthropic.claude-code$' /tmp/ext.txt || err "VS-Code-Erweiterung Claude Code fehlt"
 # Graphify: Skill angemeldet und echter Graph aus Code (lokale AST-Analyse, ohne LLM)

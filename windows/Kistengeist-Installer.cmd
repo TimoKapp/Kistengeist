@@ -2,13 +2,17 @@
 @echo off
 setlocal
 title Kistengeist-Installer
+set "KG_SELF=%~f0"
 rem Adminrechte (zum Schreiben der Speicherkarte nötig) – sonst neu mit UAC-Abfrage starten.
-net session >nul 2>&1
+fltmc >nul 2>&1
 if errorlevel 1 (
-    powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    powershell -NoProfile -Command "try { Start-Process -FilePath $env:KG_SELF -Verb RunAs -ErrorAction Stop } catch { exit 1 }"
+    if errorlevel 1 (
+        echo Ohne Administratorrechte kann die Speicherkarte nicht beschrieben werden.
+        pause
+    )
     exit /b
 )
-set "KG_SELF=%~f0"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$s=[IO.File]::ReadAllText($env:KG_SELF); Invoke-Expression $s"
 set "rc=%errorlevel%"
 echo.
@@ -76,19 +80,37 @@ function New-UserData($code) {
     # Ohne Kopfzeile: der Imager setzt „#cloud-config“ selbst davor.
     $boot = @'
 #!/bin/bash
-# Kistengeist: beim ersten Start den Installer laden und ausführen (mit Wiederholungen,
-# falls das Netz noch nicht steht). Bei Erfolg schaltet sich dieser Dienst ab.
-umask 077
-exec >>/var/log/kistengeist-firstboot.log 2>&1
-for i in $(seq 1 60); do
-  curl -fsSL --max-time 60 "@URL@" -o /root/kistengeist-install.sh && break
-  sleep 10
-done
+# Kistengeist: beim ersten Start den Installer laden und ausführen. Wiederholt endlos (mit
+# wachsender Pause), bis Internet da ist; Fortschritt und Fehler stehen am Bildschirm (tty1).
+log=/var/log/kistengeist-firstboot.log
+(umask 077; touch "$log")
+exec >>"$log" 2>&1
+show() { printf '\033[2J\033[H\n  Kistengeist wird eingerichtet\n\n  %s\n\n' "$*" >/dev/tty1 2>/dev/null || true; }
+url="@URL@"
 sha="@SHA@"
-if [ -n "$sha" ]; then
-  echo "$sha  /root/kistengeist-install.sh" | sha256sum -c - || { rm -f /root/kistengeist-install.sh; exit 1; }
+f=/root/kistengeist-install.sh
+pause=10
+while :; do
+  show "Lade den Installer ... (Netzwerkkabel bzw. WLAN nötig)"
+  if curl -fsSL --max-time 120 "$url" -o "$f.tmp"; then
+    if [ -z "$sha" ] || echo "$sha  $f.tmp" | sha256sum -c - >/dev/null; then
+      mv -f "$f.tmp" "$f"
+      break
+    fi
+    show "Prüfsumme des Installers stimmt nicht - neuer Versuch in $pause Sekunden."
+  else
+    show "Kein Internet. Bitte Netzwerkkabel bzw. WLAN prüfen. Neuer Versuch in $pause Sekunden."
+  fi
+  sleep "$pause"
+  [ "$pause" -lt 300 ] && pause=$((pause * 2))
+done
+show "Installiere Kistengeist ... (einige Minuten)"
+if KG_START_CONSOLE=1 bash "$f"; then
+  systemctl disable kistengeist-firstboot.service
+else
+  show "Fehler bei der Einrichtung (neuer Versuch in 1 Minute):" "$(tail -n 3 "$log")"
+  exit 1
 fi
-KG_START_CONSOLE=1 bash /root/kistengeist-install.sh && systemctl disable kistengeist-firstboot.service
 '@
     $boot = $boot.Replace('@URL@', $KgInstallUrl).Replace('@SHA@', $KgInstallSha)
     $bootIndented = ($boot -split "`r?`n" | ForEach-Object { "      $_" }) -join "`n"
@@ -103,6 +125,7 @@ user:
   name: claude
   shell: /bin/bash
   lock_passwd: true
+  sudo: null
   groups: [sudo, video, render, audio, input, plugdev, netdev]
 ssh_pwauth: false
 write_files:
@@ -124,6 +147,8 @@ $bootIndented
       Type=oneshot
       ExecStart=/usr/local/sbin/kistengeist-firstboot
       TimeoutStartSec=0
+      Restart=on-failure
+      RestartSec=60
       [Install]
       WantedBy=multi-user.target
 runcmd:
@@ -158,28 +183,30 @@ $auth
 function Find-Imager {
     $keys = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
             'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+    $found = @()
     foreach ($e in (Get-ItemProperty $keys -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'Raspberry Pi Imager*' })) {
         $dir = $e.InstallLocation
         if (-not $dir -and $e.DisplayIcon) { $dir = Split-Path ($e.DisplayIcon -replace '"', '' -replace ',\d+$', '') }
         $exe = if ($dir) { Join-Path $dir 'rpi-imager.exe' } else { $null }
         if ($exe -and (Test-Path $exe)) {
-            $v = [version]((Get-Item $exe).VersionInfo.ProductVersion -replace '[^0-9.].*$', '')
-            return [pscustomobject]@{ Exe = $exe; Version = $v }
+            try { $v = [version]((Get-Item $exe).VersionInfo.ProductVersion -replace '[^0-9.].*$', '') } catch { $v = [version]'0.0' }
+            $found += [pscustomobject]@{ Exe = $exe; Version = $v }
         }
     }
-    return $null
+    return ($found | Sort-Object Version -Descending | Select-Object -First 1)
 }
 
 function Install-Imager {
     Say 'Raspberry Pi Imager wird installiert (offizielles, signiertes Programm von Raspberry Pi Ltd)'
     $setup = Join-Path $Work 'imager-setup.exe'
-    & curl.exe -fL --retry 3 -o $setup $ImagerUrl
+    & curl.exe --ssl-revoke-best-effort -fL --retry 3 -o $setup $ImagerUrl
     if ($LASTEXITCODE -ne 0) { Fail 'Raspberry Pi Imager konnte nicht geladen werden.' }
     $sig = Get-AuthenticodeSignature $setup
-    if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Raspberry Pi') {
+    if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notlike 'CN=Raspberry Pi Ltd*') {
         Remove-Item $setup -Force
         Fail "Die Signatur des Imagers ist ungültig ($($sig.Status)). Abbruch."
     }
+    Warn 'Fragt Windows gleich, ob Gerätesoftware von Raspberry Pi Ltd installiert werden soll: INSTALLIEREN klicken.'
     $p = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
     if ($p.ExitCode -ne 0) { Fail "Installation des Imagers fehlgeschlagen (Code $($p.ExitCode))." }
 }
@@ -209,29 +236,48 @@ $imager = Find-Imager
 if (-not $imager -or $imager.Version -lt $ImagerMin) {
     Install-Imager
     $imager = Find-Imager
-    if (-not $imager) { Fail 'Raspberry Pi Imager wurde nicht gefunden.' }
+    if (-not $imager -or $imager.Version -lt $ImagerMin) { Fail "Raspberry Pi Imager $ImagerMin oder neuer wurde nicht gefunden." }
 }
 Say "Raspberry Pi Imager $($imager.Version)"
 
 # --- 2. Raspberry Pi OS Lite laden und prüfen ----------------------------------------------------
 Say 'Neueste Version von Raspberry Pi OS Lite (64-bit) ermitteln'
-$url = (& curl.exe -sSLI -o NUL -w '%{url_effective}' $OsLatestUrl)
+$url = (& curl.exe --ssl-revoke-best-effort -sSLI -o NUL -w '%{url_effective}' $OsLatestUrl)
 if ($LASTEXITCODE -ne 0 -or $url -notmatch '^https://downloads\.raspberrypi\.com/.+\.img\.xz$') {
     Fail 'Download-Adresse von Raspberry Pi OS nicht gefunden (Internet?).'
 }
 $name = Split-Path $url -Leaf
 $img = Join-Path $Work $name
-$expected = ((& curl.exe -fsSL "$url.sha256") -split '\s+')[0].ToLower()
+$expected = ((& curl.exe --ssl-revoke-best-effort -fsSL "$url.sha256") -split '\s+')[0].ToLower()
 if ($expected -notmatch '^[0-9a-f]{64}$') { Fail 'Prüfsumme von Raspberry Pi OS nicht erhältlich.' }
 $have = if (Test-Path $img) { (Get-FileHash -Algorithm SHA256 $img).Hash.ToLower() } else { '' }
 if ($have -ne $expected) {
     Say "Lade $name (ca. 500 MB)"
-    & curl.exe -fL --retry 5 -o $img $url
+    & curl.exe --ssl-revoke-best-effort -fL --retry 5 -C - -o $img $url
     if ($LASTEXITCODE -ne 0) { Fail 'Download fehlgeschlagen.' }
     $have = (Get-FileHash -Algorithm SHA256 $img).Hash.ToLower()
     if ($have -ne $expected) { Remove-Item $img -Force; Fail 'Prüfsumme stimmt nicht – Datei verworfen.' }
 }
 Say 'Prüfsumme in Ordnung'
+# Das Image muss die Ersteinrichtung per cloud-init lesen (seit Trixie 11/2025). Stellt Raspberry Pi
+# künftig um, würde die Einrichtung sonst still ignoriert.
+try {
+    $list = (& curl.exe --ssl-revoke-best-effort -fsSL 'https://downloads.raspberrypi.com/os_list_imagingutility_v4.json') -join "`n" | ConvertFrom-Json
+    $stack = New-Object System.Collections.Stack
+    $stack.Push($list.os_list)
+    $entry = $null
+    while ($stack.Count -gt 0 -and -not $entry) {
+        foreach ($o in @($stack.Pop())) {
+            if ($o.url -and ($o.url -like '*raspios_lite_arm64*' -or $o.url -like "*$name")) { $entry = $o; break }
+            if ($o.subitems) { $stack.Push($o.subitems) }
+        }
+    }
+    if ($entry -and $entry.init_format -and $entry.init_format -notlike 'cloudinit*') {
+        Fail "Raspberry Pi OS nutzt eine neue Art der Ersteinrichtung ($($entry.init_format)). Bitte eine neue Version des Kistengeist-Installers laden."
+    }
+} catch {
+    Warn 'Art der Ersteinrichtung konnte nicht geprüft werden (weiter mit cloud-init).'
+}
 # Alte Versionen aufräumen
 Get-ChildItem $Work -Filter '*raspios*.img.xz' | Where-Object { $_.Name -ne $name } | Remove-Item -Force
 
@@ -248,18 +294,26 @@ if ($disks.Count -eq 0) { Fail 'Keine Speicherkarte bzw. kein USB-Stick gefunden
 Write-Host ''
 foreach ($d in $disks) {
     $gb = [math]::Round($d.Size / 1GB, 1)
-    $warn = if ($d.Size -gt 256GB) { '  (groß – ist das wirklich die Karte?)' } else { '' }
-    Write-Host ("   [{0}]  {1}  {2} GB{3}" -f $d.Number, $d.FriendlyName, $gb, $warn)
+    $vols = @(Get-Partition -DiskNumber $d.Number -ErrorAction SilentlyContinue | Get-Volume -ErrorAction SilentlyContinue |
+        Where-Object { $_.DriveLetter } | ForEach-Object { "$($_.DriveLetter): $($_.FileSystemLabel)".Trim() })
+    $where = if ($vols) { '  [' + ($vols -join ', ') + ']' } else { '' }
+    $warn = if ($d.Size -gt 128GB) { '  (groß - ist das wirklich die Speicherkarte?)' } else { '' }
+    Write-Host ("   [{0}]  {1}  {2} GB{3}{4}" -f $d.Number, $d.FriendlyName, $gb, $where, $warn)
 }
 Write-Host ''
 $num = if ($auto) { "$env:KG_DISK" } else { Read-Host '  Nummer des Ziels eingeben' }
 $disk = $disks | Where-Object { "$($_.Number)" -eq $num.Trim() }
 if (-not $disk) { Fail 'Ungültige Auswahl.' }
-if ($disk.Size -lt 7GB) { Fail 'Die Karte ist zu klein (mindestens 8 GB, empfohlen 32 GB).' }
+if ($disk.Size -lt 14GB) { Fail 'Die Karte ist zu klein (mindestens 16 GB, empfohlen 32 GB).' }
 Write-Host ''
-Write-Host "  ALLE DATEN auf „$($disk.FriendlyName)“ ($([math]::Round($disk.Size / 1GB, 1)) GB) werden gelöscht!" -ForegroundColor Red
+Write-Host ("  ALLE DATEN auf '{0}' ({1} GB) werden gelöscht!" -f $disk.FriendlyName, [math]::Round($disk.Size / 1GB, 1)) -ForegroundColor Red
 $confirm = if ($auto) { "$env:KG_CONFIRM" } else { Read-Host '  Zum Fortfahren JA eingeben' }
-if ($confirm -cne 'JA') { Fail 'Abgebrochen – nichts wurde verändert.' }
+if ($confirm.Trim() -ne 'JA') { Fail 'Abgebrochen - nichts wurde verändert.' }
+if ($disk.Size -gt 128GB -and -not $auto) {
+    if ((Read-Host '  Das Ziel ist größer als 128 GB (Festplatte?). Wirklich löschen? Nochmal JA eingeben').Trim() -ne 'JA') {
+        Fail 'Abgebrochen - nichts wurde verändert.'
+    }
+}
 
 # --- 4. WLAN (optional) ------------------------------------------------------------------------
 Write-Host ''
@@ -271,9 +325,12 @@ if ($ssid) {
         $pass = "$env:KG_WIFI_PASS"
     } else {
         $sec = Read-Host '  WLAN-Passwort' -AsSecureString
-        $pass = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))
+        $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec)
+        $pass = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
     }
     if ($pass -and ($pass.Length -lt 8 -or $pass.Length -gt 63)) { Fail 'Ein WLAN-Passwort hat 8 bis 63 Zeichen.' }
+    if ([Text.Encoding]::UTF8.GetByteCount($ssid) -gt 32) { Fail 'Der WLAN-Name ist zu lang (höchstens 32 Zeichen).' }
     $nc = Join-Path $Work 'network-config'
     Write-Unix $nc (New-NetworkConfig $ssid $pass 'DE')
 }
@@ -283,9 +340,9 @@ Write-Unix $ud (New-UserData $code)
 # --- 5. Schreiben --------------------------------------------------------------------------------
 Write-Host ''
 Say 'Schreibe die Speicherkarte (ca. 5-10 Minuten, danach wird geprüft)'
-Warn 'Fragt Windows zwischendurch, ob ein Datenträger formatiert werden soll: immer „Abbrechen“!'
+Warn 'Fragt Windows zwischendurch, ob ein Datenträger formatiert werden soll: immer ABBRECHEN!'
 $log = Join-Path $Work 'imager.log'
-$imgArgs = @('--cli', '--cloudinit-userdata', $ud)
+$imgArgs = @('--cli', '--debug', '--cloudinit-userdata', $ud)
 if ($nc) { $imgArgs += @('--cloudinit-networkconfig', $nc) }
 if ($env:KG_ALLOW_ANY_DISK -eq '1') { $imgArgs += @('--enable-writing-system-drives', '--disable-eject') }
 $imgArgs += @('--log-file', $log, $img, "\\.\PhysicalDrive$($disk.Number)")
@@ -294,25 +351,44 @@ $p = Start-Process -FilePath $imager.Exe -ArgumentList ($imgArgs | ForEach-Objec
 if ($nc) { Remove-Item $nc -Force -ErrorAction SilentlyContinue }
 Remove-Item $ud -Force -ErrorAction SilentlyContinue
 if ($p.ExitCode -ne 0) {
-    if (Test-Path $log) { Get-Content $log -Tail 15 }
-    Fail "Schreiben fehlgeschlagen (Code $($p.ExitCode))."
+    $tail = if (Test-Path $log) { (Get-Content $log -Tail 30) -join "`n" } else { '' }
+    if ($tail -match 'removable') {
+        Fail 'Der Imager lehnt dieses Laufwerk ab (kein Wechseldatenträger). Bitte eine Speicherkarte bzw. einen USB-Stick verwenden.'
+    }
+    if ($tail) { Write-Host $tail }
+    Fail "Schreiben fehlgeschlagen (Code $($p.ExitCode)). Protokoll: $log"
 }
 
 # --- 6. Fertig ---------------------------------------------------------------------------------
-$codeFile = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Kistengeist-Code.txt'
-Set-Content -Path $codeFile -Encoding UTF8 -Value @(
-    'Kistengeist – Einrichtungscode',
+$codeText = @(
+    'Kistengeist - Einrichtungscode',
     '',
     "Code:     $code",
-    'Adresse:  http://kistengeist.local  (oder die IP-Adresse, die am Bildschirm des Pi steht)',
+    'Adresse:  http://kistengeist.local',
+    '          Klappt das nicht: http://kistengeist.fritz.box, die IP-Adresse vom Bildschirm des Pi',
+    '          oder aus der Geräteliste des Routers (PC nicht im Gast-WLAN/VPN).',
     '',
     'Der Code schützt die Einrichtung vor anderen Geräten im Netz. Nach der Einrichtung',
-    'wird er nicht mehr gebraucht – diese Datei dann bitte löschen.')
+    'wird er nicht mehr gebraucht - diese Datei dann bitte löschen.')
+# Auf den Desktop und neben dieses Programm (bei UAC mit fremdem Admin-Konto liegt der Desktop woanders).
+$codeFiles = @()
+foreach ($dir in @([Environment]::GetFolderPath('Desktop'), (Split-Path $env:KG_SELF))) {
+    try {
+        if ($dir) {
+            $f = Join-Path $dir 'Kistengeist-Code.txt'
+            Set-Content -Path $f -Encoding UTF8 -Value $codeText
+            $codeFiles += $f
+        }
+    } catch { }
+}
+$codeFile = ($codeFiles | Select-Object -Unique) -join ' und '
+if (-not $codeFile) { $codeFile = '(konnte nicht gespeichert werden - bitte notieren!)' }
 Write-Host ''
 Write-Host '  Fertig! So geht es weiter:' -ForegroundColor Green
 Write-Host '   1. Karte in den Raspberry Pi stecken, Netzwerkkabel (falls kein WLAN) und Strom anschließen.'
 Write-Host '   2. 5-15 Minuten warten: Der Pi lädt Kistengeist aus dem Internet und bereitet sich vor.'
 Write-Host '   3. Im Browser öffnen:  http://kistengeist.local'
+Write-Host '      (sonst http://kistengeist.fritz.box oder die IP-Adresse vom Bildschirm des Pi)'
 Write-Host "   4. Einrichtungscode:   $code" -ForegroundColor Cyan
 Write-Host "      (auch gespeichert in $codeFile)"
 Write-Host ''

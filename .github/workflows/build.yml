@@ -31,7 +31,7 @@ jobs:
       - name: Shell-Lint
         run: |
           mapfile -t scripts < <(grep -rlE '^#!/bin/bash|shell=bash' stage-claude)
-          shellcheck -x -S warning "${scripts[@]}" install.sh tools/ci_installer.sh tools/ci_installer_inner.sh
+          shellcheck -x -S warning "${scripts[@]}" install.sh tools/ci_installer.sh tools/ci_installer_inner.sh tools/ci_cloudinit_check.sh tools/ci_raspios_check.sh
       - name: Tests (inkl. Installer-Probelauf aller Zugangsarten)
         run: pytest -q
 
@@ -102,6 +102,7 @@ jobs:
     # Windows-Werkzeug echt: Imager installieren, Raspberry Pi OS laden, virtuelles Laufwerk schreiben.
     name: Windows-Werkzeug echt testen
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: Testbetrieb und Schreiben auf ein virtuelles Laufwerk
@@ -111,6 +112,15 @@ jobs:
         with:
           name: kistengeist-cloudinit
           path: ${{ runner.temp }}/kg-test/
+
+  raspios:
+    # Das offizielle Raspberry Pi OS Lite, das Kunden über das Windows-Werkzeug bekommen, liest
+    # die Ersteinrichtung weiterhin per cloud-init (sonst würde sie still ignoriert).
+    name: Raspberry Pi OS Lite (aktuell) prüfen
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tools/ci_raspios_check.sh
 
   cloudinit:
     # Die geschriebenen Ersteinrichtungsdateien mit cloud-init und Netplan aus Debian 13 prüfen.
@@ -129,7 +139,7 @@ jobs:
 
   image:
     name: Image für Raspberry Pi 4 bauen
-    needs: [test, packages, n8n, browser, browser-systemd, installer, windows, cloudinit]
+    needs: [test, packages, n8n, browser, browser-systemd, installer, windows, cloudinit, raspios]
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.build_image)
     runs-on: ubuntu-24.04-arm
     permissions:

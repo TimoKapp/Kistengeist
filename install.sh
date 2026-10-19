@@ -28,6 +28,7 @@ cleanup() { [ -z "$KG_WORK" ] || rm -rf "$KG_WORK"; }
 # Alles steckt in main(), damit bei „curl | bash“ nichts halb Geladenes ausgeführt wird.
 main() {
     set -euo pipefail
+    umask 022   # unabhängig vom Aufrufer (z. B. Erststart-Dienst): Programmdateien für alle lesbar
     local repo="${KG_REPO:-TimoKapp/kistengeist}"
     local ref="${KG_REF:-main}"
     local sha="${KG_SHA256:-}"
