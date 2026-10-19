@@ -198,7 +198,8 @@ done
 fail=0
 if [ -n "$ok" ]; then
     echo "Setup-Assistent nach $(( (SECONDS - start) / 60 )) Minuten erreichbar."
-    curl -fsS http://127.0.0.1:8080/ | grep -q 'code-gate' || { echo "::error::Startseite unvollständig"; fail=1; }
+    page="$(curl -fsS http://127.0.0.1:8080/ || true)"
+    [[ "$page" == *code-gate* ]] || { echo "::error::Startseite unvollständig"; fail=1; }
     st="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/status)"
     [ "$st" = 401 ] || [ "$st" = 403 ] || { echo "::error::/api/status ohne Code: $st"; fail=1; }
     st="$(curl -s -o /dev/null -w '%{http_code}' -H "X-Setup-Code: $code" http://127.0.0.1:8080/api/status)"
