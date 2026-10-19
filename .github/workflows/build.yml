@@ -137,9 +137,25 @@ jobs:
       - name: cloud-init-Schema, Netplan, Erststart-Skript
         run: bash tools/ci_cloudinit_check.sh ci-cloudinit
 
+  firstboot:
+    # Erststart wie beim Kunden: Raspberry Pi OS Lite mit den Imager-Dateien in QEMU starten,
+    # bis der Setup-Assistent von außen erreichbar ist.
+    name: Erststart echt testen (QEMU)
+    needs: windows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: kistengeist-cloudinit
+          path: ci-cloudinit
+      - name: Raspberry Pi OS Lite mit Imager-Dateien starten
+        run: bash tools/ci_firstboot_qemu.sh ci-cloudinit
+
   image:
     name: Image für Raspberry Pi 4 bauen
-    needs: [test, packages, n8n, browser, browser-systemd, installer, windows, cloudinit, raspios]
+    needs: [test, packages, n8n, browser, browser-systemd, installer, windows, cloudinit, raspios, firstboot]
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.build_image)
     runs-on: ubuntu-24.04-arm
     permissions:

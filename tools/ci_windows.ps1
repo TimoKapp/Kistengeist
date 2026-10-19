@@ -84,7 +84,7 @@ $cl = Get-Content (Join-Path $boot 'cmdline.txt') -Raw
 if ($cl -notmatch 'ds=nocloud') { Err 'cmdline.txt ohne ds=nocloud' }
 if (($cl.Trim() -split "`n").Count -ne 1) { Err 'cmdline.txt hat mehrere Zeilen' }
 if ((Get-Content (Join-Path $boot 'network-config') -Raw) -notmatch 'TestWLAN') { Err 'network-config ohne WLAN' }
-Copy-Item (Join-Path $boot 'user-data'), (Join-Path $boot 'network-config'), (Join-Path $boot 'meta-data') $out -Force
+Copy-Item (Join-Path $boot 'user-data'), (Join-Path $boot 'network-config'), (Join-Path $boot 'meta-data'), (Join-Path $boot 'cmdline.txt') $out -Force
 $desk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Kistengeist-Code.txt'
 if (-not (Test-Path $desk)) { Err 'Kistengeist-Code.txt fehlt auf dem Desktop' }
 if (Test-Path (Join-Path $env:LOCALAPPDATA 'Kistengeist\network-config')) { Err 'WLAN-Daten bleiben auf dem PC liegen' }
