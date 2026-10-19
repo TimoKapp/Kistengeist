@@ -44,7 +44,7 @@ for block in lzma.open("Packages.xz", "rt").read().split("\n\n"):
     f = dict(re.findall(r"^([A-Za-z-]+): (.*)$", block, re.M))
     if "Package" in f:
         pkgs[f["Package"]] = f
-kern = sorted(p for p in pkgs if re.fullmatch(r"linux-image-\d[\d.]*[^ ]*-arm64", p) and "rt" not in p)
+kern = sorted(p for p in pkgs if re.fullmatch(r"linux-image-\d[\d.]*[^ ]*-arm64", p) and "-rt-" not in p and "-cloud-" not in p)
 print(pkgs[kern[-1]]["Filename"])
 print(pkgs["busybox-static"]["Filename"])
 PY
@@ -55,7 +55,8 @@ curl -fsSL -o kernel.deb "https://deb.debian.org/debian/$(sed -n 1p debs.txt)"
 curl -fsSL -o busybox.deb "https://deb.debian.org/debian/$(sed -n 2p debs.txt)"
 dpkg-deb -x kernel.deb kdeb
 dpkg-deb -x busybox.deb bb
-moddir="$(find kdeb/usr/lib/modules kdeb/lib/modules -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -n 1)"
+moddir="$(find kdeb/usr/lib/modules kdeb/lib/modules -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -n 1 || true)"
+[ -n "$moddir" ] || { echo "::error::Kernel-Module nicht gefunden"; exit 1; }
 kver="$(basename "$moddir")"
 echo "Kernel $kver"
 # vmlinuz ist bei Debian ein EFI-zboot- oder gzip-Abbild: für -kernel das rohe Image auspacken.
