@@ -79,7 +79,9 @@ depmod -b "$(dirname "$(dirname "$(dirname "$moddir")")")" "$kver" 2>/dev/null \
     || depmod -b "$(dirname "$(dirname "$moddir")")" "$kver"
 rm -rf initrd
 mkdir -p initrd/bin initrd/mods initrd/dev initrd/proc initrd/sys initrd/root
-cp "$(find bb -name busybox -type f | head -n 1)" initrd/bin/busybox
+bbin="$(find bb/usr/bin bb/bin -maxdepth 1 -name busybox -type f 2>/dev/null | head -n 1 || true)"
+file "$bbin" | grep -q 'ARM aarch64' || { echo "::error::busybox (arm64) nicht gefunden: $bbin"; exit 1; }
+install -m 0755 "$bbin" initrd/bin/busybox
 python3 - "$moddir" initrd/mods <<'PY' >initrd/mods/order
 import lzma, os, re, shutil, subprocess, sys
 moddir, out = sys.argv[1:]
@@ -187,6 +189,7 @@ ok=""
 start=$SECONDS
 while [ $((SECONDS - start)) -lt 5400 ]; do
     kill -0 "$qpid" 2>/dev/null || { echo "::error::QEMU wurde beendet"; break; }
+    grep -q 'Kernel panic' serial.log && { echo "::error::Kernel panic"; break; }
     if curl -fs -o /dev/null --max-time 10 http://127.0.0.1:8080/api/info; then ok=1; break; fi
     sleep 30
     echo "$(( (SECONDS - start) / 60 )) min: $(tail -n 1 serial.log | tr -cd '[:print:]' | cut -c1-150)"
