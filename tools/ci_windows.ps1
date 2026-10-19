@@ -45,7 +45,7 @@ Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' |
 
 Write-Host '== 2. Ernstfall auf virtuellem Laufwerk'
 $vhd = Join-Path $env:RUNNER_TEMP 'kg.vhdx'
-"create vdisk file=`"$vhd`" maximum=12288 type=expandable`nattach vdisk" | Out-File -Encoding ascii "$env:RUNNER_TEMP\dp.txt"
+"create vdisk file=`"$vhd`" maximum=16384 type=expandable`nattach vdisk" | Out-File -Encoding ascii "$env:RUNNER_TEMP\dp.txt"
 diskpart /s "$env:RUNNER_TEMP\dp.txt" | Out-Host
 Start-Sleep 3
 $disk = Get-Disk | Where-Object { $_.Location -like "*kg.vhdx*" }
