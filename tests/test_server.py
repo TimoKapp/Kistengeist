@@ -209,11 +209,14 @@ def test_setup_code_required(server):
         status, data = request(port, method, path, {} if method == "POST" else None, code=None)
         assert status == 401, (path, status, data)
     assert request(port, "POST", "/api/code", {}, code="testcqde23")[0] == 200   # Groß/Klein egal
-    assert request(port, "GET", f"/kistengeist.rdp?code={CODE}", code=None)[0] == 200
+    assert request(port, "GET", "/kistengeist.rdp", code=None)[0] == 200      # ohne Geheimnisse
 
 
 def test_setup_code_lockout(server):
     _srv, port, _tmp = server
+    for _ in range(20):                                                        # Favicon & Co. ohne Code
+        assert request(port, "GET", "/favicon.ico", code=None)[0] == 401
+    assert request(port, "POST", "/api/code", {})[0] == 200                    # sperrt nicht
     for _ in range(10):
         assert request(port, "POST", "/api/code", {}, code="FALSCHFALS")[0] == 401
     assert request(port, "POST", "/api/code", {}, code="FALSCHFALS")[0] == 429
@@ -231,3 +234,19 @@ def test_setup_code_generated_and_from_boot(tmp_path, monkeypatch):
     (tmp_path / "kistengeist-code.txt").write_text("zu-kurz")
     code = srv.setup_code()
     assert srv.CODE_RE.match(code) and code == srv.setup_code()
+
+
+def test_setupcode_script(tmp_path):
+    import subprocess
+    script = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "stage-claude/00-install/files/rootfs/opt/kistengeist/bin/kistengeist-setupcode")
+    env = {**os.environ, "KG_ETC": str(tmp_path / "etc"), "KG_BOOT_CODE": str(tmp_path / "boot.txt")}
+    first = subprocess.run(["bash", script], env=env, capture_output=True, text=True, check=True).stdout.strip()
+    again = subprocess.run(["bash", script], env=env, capture_output=True, text=True, check=True).stdout.strip()
+    import server as srv
+    assert srv.CODE_RE.match(first) and first == again
+    assert oct((tmp_path / "etc" / "setup-code").stat().st_mode & 0o777) == "0o600"
+    (tmp_path / "etc" / "setup-code").unlink()
+    (tmp_path / "boot.txt").write_text("abcdefghjk\n")
+    assert subprocess.run(["bash", script], env=env, capture_output=True, text=True,
+                          check=True).stdout.strip() == "ABCDEFGHJK"

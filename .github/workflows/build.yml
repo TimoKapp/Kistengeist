@@ -254,12 +254,17 @@ jobs:
           bash -n out/install.sh
           # Windows-Werkzeug auf genau diesen Installer festlegen (Zeilenenden CRLF erhalten).
           python3 - "$VERSION" "$GITHUB_REPOSITORY" <<'PY'
+          import hashlib
           import sys
           version, repo = sys.argv[1], sys.argv[2]
           src = open("windows/Kistengeist-Installer.cmd", "rb").read().decode("utf-8")
           old = "$KgInstallUrl = 'https://raw.githubusercontent.com/TimoKapp/kistengeist/main/install.sh'"
           assert old in src
           new = f"$KgInstallUrl = 'https://github.com/{repo}/releases/download/{version}/install.sh'"
+          sha = hashlib.sha256(open("out/install.sh", "rb").read()).hexdigest()
+          old_sha = "$KgInstallSha = ''"
+          assert old_sha in src
+          src = src.replace(old_sha, f"$KgInstallSha = '{sha}'")
           out = src.replace(old, new).replace("\r\n", "\n").replace("\n", "\r\n")
           open("out/Kistengeist-Installer.cmd", "wb").write(out.encode("utf-8"))
           PY

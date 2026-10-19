@@ -105,7 +105,7 @@ def test_rdp_download(server):  # noqa: F811
     _srv, port, _ = server
     import http.client
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
-    conn.request("GET", "/kistengeist.rdp?code=TESTCQDE23", headers={"Host": f"127.0.0.1:{port}"})
+    conn.request("GET", "/kistengeist.rdp", headers={"Host": f"127.0.0.1:{port}"})
     res = conn.getresponse()
     body = res.read().decode()
     assert res.status == 200 and "attachment" in res.getheader("Content-Disposition")

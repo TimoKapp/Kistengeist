@@ -20,8 +20,8 @@ else:
 PY
 }
 
-code="$(/opt/kistengeist/bin/kistengeist-setupcode)"
 while true; do
+    code="$(/opt/kistengeist/bin/kistengeist-setupcode 2>/dev/null || true)"
     host="$(hostname)"
     ips="$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+\.' | head -n 3 | tr '\n' ' ')"
     first_ip="${ips%% *}"

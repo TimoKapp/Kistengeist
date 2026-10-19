@@ -10,7 +10,11 @@ CON=kistengeist-setup
 SSID=Kistengeist-Setup
 # Passwort = Einrichtungscode dieses Geräts (zufällig, am Bildschirm des Pi bzw. im
 # Windows-Werkzeug) – kein festes, öffentlich bekanntes Passwort.
-PASS="$(/opt/kistengeist/bin/kistengeist-setupcode)"
+PASS="$(/opt/kistengeist/bin/kistengeist-setupcode)" || PASS=""
+if [ "${#PASS}" -ne 10 ]; then
+    echo "Kein Einrichtungscode – Einrichtungs-WLAN wird nicht gestartet." >&2
+    exit 1
+fi
 
 mkdir -p "$RUN"
 

@@ -503,25 +503,34 @@ CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 CODE_RE = re.compile(r"^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{10}$")
 BOOT_CODE_FILE = ROOT + "/boot/firmware/kistengeist-code.txt"
 MAX_CODE_FAILS = 10
+MAX_CODE_FAILS_TOTAL = 200   # alle Absender zusammen (gegen Raten mit vielen Adressen)
 CODE_LOCK_SECONDS = 600
 _code_fails: dict[str, list[float]] = {}
 _code_lock = threading.Lock()
 
 
+_code_cache: dict[str, str] = {}
+
+
 def setup_code() -> str:
-    """Pro Gerät zufälliger Code; auch kistengeist-setupcode nutzt dieselbe Datei."""
+    """Pro Gerät zufälliger Code; auch kistengeist-setupcode nutzt dieselbe Datei. Im Speicher
+    gemerkt: das Abschlussmodul löscht die Datei, der Assistent bleibt bis zum Neustart bedienbar."""
     path = ETC + "/setup-code"
+    if path in _code_cache:
+        return _code_cache[path]
     os.makedirs(ETC, exist_ok=True)
     import fcntl
     with open(path + ".lock", "w") as lock:  # gleiche Sperre wie bin/kistengeist-setupcode
         fcntl.flock(lock, fcntl.LOCK_EX)
-        return _setup_code_locked(path)
+        _code_cache[path] = _setup_code_locked(path)
+        return _code_cache[path]
 
 
 def _setup_code_locked(path: str) -> str:
     try:
         code = open(path, encoding="utf-8").read().strip()
         if CODE_RE.match(code):
+            os.chmod(path, 0o600)
             return code
     except OSError:
         pass
@@ -537,16 +546,24 @@ def _setup_code_locked(path: str) -> str:
 
 
 def code_ok(given: str | None, client: str) -> bool | None:
-    """True/False; None = zu viele Fehlversuche (vorübergehend gesperrt)."""
+    """True/False; None = zu viele Fehlversuche (vorübergehend gesperrt).
+
+    Nur wirklich gesendete, falsche Codes zählen als Fehlversuch – sonst sperrten sich Nutzer über
+    automatische Abrufe des Browsers (z. B. Favicon) selbst aus."""
     now = time.time()
+    given = (given or "").strip().upper()
     with _code_lock:
+        for ip in [ip for ip, ts in _code_fails.items() if not ts or now - ts[-1] >= CODE_LOCK_SECONDS]:
+            del _code_fails[ip]
         fails = [t for t in _code_fails.get(client, []) if now - t < CODE_LOCK_SECONDS]
-        _code_fails[client] = fails
-        if len(fails) >= MAX_CODE_FAILS:
+        total = sum(len(v) for v in _code_fails.values())
+        if len(fails) >= MAX_CODE_FAILS or total >= MAX_CODE_FAILS_TOTAL:
             return None
-        ok = hmac.compare_digest((given or "").strip().upper().encode(), setup_code().encode())
+        if not given:
+            return False
+        ok = hmac.compare_digest(given.encode(), setup_code().encode())
         if not ok:
-            fails.append(now)
+            _code_fails[client] = fails + [now]
         return ok
 
 
@@ -574,8 +591,12 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "KistengeistSetup"
     modules_dir = HOME + "/modules"
 
-    def log_message(self, fmt: str, *args) -> None:  # leiser als Standard
-        sys.stderr.write("setup: " + (fmt % args) + "\n")
+    timeout = 15  # langsame/hängende Verbindungen nicht ewig offen halten
+
+    def log_message(self, fmt: str, *args) -> None:  # leiser als Standard; ohne Query (kann den Code enthalten)
+        line = (fmt % args)
+        line = re.sub(r"\?[^ \"]*", "", line, count=1)
+        sys.stderr.write("setup: " + line + "\n")
 
     # Antworten
     def send_json(self, data: dict, status: int = 200) -> None:
@@ -602,6 +623,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Content-Security-Policy",
                          "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:")
         self.end_headers()
@@ -634,8 +656,8 @@ class Handler(BaseHTTPRequestHandler):
             return False
         # Alles außer Startseite, Skripten und Grundinfo nur mit dem Einrichtungscode (steht am
         # Bildschirm des Pi, im Windows-Werkzeug bzw. am Ende von install.sh).
-        if path in ("/", "/index.html", "/app.js", "/style.css", "/api/info"):
-            return True
+        if path in ("/", "/index.html", "/app.js", "/style.css", "/api/info", "/kistengeist.rdp"):
+            return True   # die RDP-Datei enthält kein Passwort
         given = self.headers.get("X-Setup-Code")
         if given is None and "?" in self.path:
             from urllib.parse import parse_qs

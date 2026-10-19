@@ -39,6 +39,7 @@ $ProgressPreference = 'SilentlyContinue'
 
 # Wird im Release auf die Installer-Datei genau dieser Version festgelegt.
 $KgInstallUrl = 'https://raw.githubusercontent.com/TimoKapp/kistengeist/main/install.sh'
+$KgInstallSha = ''   # im Release: SHA256 von install.sh
 $OsLatestUrl = 'https://downloads.raspberrypi.com/raspios_lite_arm64_latest'
 $ImagerUrl = 'https://downloads.raspberrypi.org/imager/imager_latest.exe'
 $ImagerMin = [version]'2.0.11'
@@ -77,14 +78,19 @@ function New-UserData($code) {
 #!/bin/bash
 # Kistengeist: beim ersten Start den Installer laden und ausführen (mit Wiederholungen,
 # falls das Netz noch nicht steht). Bei Erfolg schaltet sich dieser Dienst ab.
+umask 077
 exec >>/var/log/kistengeist-firstboot.log 2>&1
 for i in $(seq 1 60); do
   curl -fsSL --max-time 60 "@URL@" -o /root/kistengeist-install.sh && break
   sleep 10
 done
+sha="@SHA@"
+if [ -n "$sha" ]; then
+  echo "$sha  /root/kistengeist-install.sh" | sha256sum -c - || { rm -f /root/kistengeist-install.sh; exit 1; }
+fi
 KG_START_CONSOLE=1 bash /root/kistengeist-install.sh && systemctl disable kistengeist-firstboot.service
 '@
-    $boot = $boot.Replace('@URL@', $KgInstallUrl)
+    $boot = $boot.Replace('@URL@', $KgInstallUrl).Replace('@SHA@', $KgInstallSha)
     $bootIndented = ($boot -split "`r?`n" | ForEach-Object { "      $_" }) -join "`n"
     return @"
 hostname: kistengeist
@@ -301,7 +307,7 @@ Set-Content -Path $codeFile -Encoding UTF8 -Value @(
     'Adresse:  http://kistengeist.local  (oder die IP-Adresse, die am Bildschirm des Pi steht)',
     '',
     'Der Code schützt die Einrichtung vor anderen Geräten im Netz. Nach der Einrichtung',
-    'wird er nicht mehr gebraucht.')
+    'wird er nicht mehr gebraucht – diese Datei dann bitte löschen.')
 Write-Host ''
 Write-Host '  Fertig! So geht es weiter:' -ForegroundColor Green
 Write-Host '   1. Karte in den Raspberry Pi stecken, Netzwerkkabel (falls kein WLAN) und Strom anschließen.'

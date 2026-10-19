@@ -15,15 +15,15 @@ XRDP_INI = "[Globals]\nport=3389\n\n[Xorg]\nname=Xorg\nlib=libxup.so\n"
 def run_install(tmp_path, mode, modules, autologin="yes", secret=True, extra_conf=""):
     root = tmp_path / "root"
     (root / "etc" / "kistengeist").mkdir(parents=True, exist_ok=True)
-    (root / "etc" / "xrdp").mkdir(parents=True)
+    (root / "etc" / "xrdp").mkdir(parents=True, exist_ok=True)
     (root / "etc" / "xrdp" / "xrdp.ini").write_text(XRDP_INI)
-    (root / "etc" / "pam.d").mkdir(parents=True)
+    (root / "etc" / "pam.d").mkdir(parents=True, exist_ok=True)
     (root / "etc" / "pam.d" / "xrdp-sesman").write_text("@include common-auth\n")
-    (root / "etc" / "ufw").mkdir(parents=True)
+    (root / "etc" / "ufw").mkdir(parents=True, exist_ok=True)
     (root / "etc" / "ufw" / "ufw.conf").write_text("ENABLED=no\nLOGLEVEL=low\n")
-    (root / "boot" / "firmware").mkdir(parents=True)
+    (root / "boot" / "firmware").mkdir(parents=True, exist_ok=True)
     (root / "boot" / "firmware" / "config.txt").write_text("[all]\n")
-    (root / "tmp").mkdir()
+    (root / "tmp").mkdir(exist_ok=True)
     (root / "etc" / "kistengeist" / "setup.conf").write_text(
         f'MODE="{mode}"\nAUTOLOGIN="{autologin}"\nMODULES="{" ".join(modules)}"\n'
         'TIMEZONE="Europe/Berlin"\nKEYMAP="de"\nLOCALE="de_DE.UTF-8"\n' + extra_conf
@@ -255,3 +255,48 @@ def test_browser_remote_access(tmp_path, mode):
         assert (root / "etc/systemd/user/kistengeist-xvfb.service").exists() and "RESIZE=true" in conf
     else:
         assert not (root / "etc/systemd/user/kistengeist-xvfb.service").exists() and "RESIZE=false" in conf
+
+
+USER_DATA = """#cloud-config
+hostname: kistengeist
+write_files:
+  - path: /etc/kistengeist/setup-code
+    permissions: '0600'
+    content: |
+      K7M2Q9XAPR
+  - path: /usr/local/sbin/kistengeist-firstboot
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      KG_START_CONSOLE=1 bash /root/kistengeist-install.sh
+runcmd:
+  - [systemctl, start, --no-block, kistengeist-firstboot.service]
+"""
+NETWORK = """network:
+  version: 2
+  wifis:
+    wlan0:
+      access-points:
+        "MeinWLAN":
+            password: "geheim123"
+"""
+
+
+def test_finalize_removes_setup_secrets(tmp_path):
+    root = tmp_path / "root"
+    fw = root / "boot" / "firmware"
+    fw.mkdir(parents=True)
+    (fw / "user-data").write_text(USER_DATA)
+    (fw / "network-config").write_text(NETWORK)
+    (root / "etc" / "netplan").mkdir(parents=True)
+    (root / "etc" / "netplan" / "50-cloud-init.yaml").write_text(NETWORK)
+    (root / "etc" / "kistengeist").mkdir(parents=True)
+    (root / "etc" / "kistengeist" / "setup-code").write_text("K7M2Q9XAPR\n")
+    root2, result = run_install(tmp_path, "desktop", ["claude-desktop"])
+    assert result.returncode == 0, result.stdout + result.stderr
+    ud = (fw / "user-data").read_text()
+    assert "K7M2Q9XAPR" not in ud and "kistengeist-firstboot" in ud and "hostname: kistengeist" in ud
+    assert "geheim123" not in (fw / "network-config").read_text()
+    assert "geheim123" in (root / "etc/netplan/50-cloud-init.yaml").read_text()   # WLAN läuft weiter
+    assert (root / "etc/cloud/cloud-init.disabled").exists()
+    assert not (root / "etc/kistengeist/setup-code").exists()

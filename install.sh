@@ -67,6 +67,8 @@ main() {
     fi
 
     mkdir -p /var/log/kistengeist
+    touch "$log" && chmod 600 "$log"
+    exec 3>&1                               # ursprüngliche Ausgabe: für den Code, nicht ins Protokoll
     exec > >(tee -a "$log") 2>&1
     say "Kistengeist wird eingerichtet ($(date '+%d.%m.%Y %H:%M'), Version $ref)"
 
@@ -181,7 +183,7 @@ main() {
     echo
     say "Fertig vorbereitet. Öffne jetzt auf PC oder Handy im selben Netz:"
     echo "      http://$(hostname).local    ${ips}"
-    echo "    Einrichtungscode: $code"
+    echo "    Einrichtungscode: $code" >&3
     echo "    Dort wählst du Module, Passwort und Region; danach startet der Pi neu."
     echo "    Protokoll: $log"
 }

@@ -545,7 +545,7 @@ function renderDone() {
   } else if (m !== "desktop") {   // RDP
     rows.push(["RDP-Adresse", net.ips.length ? `${net.ips[0]} oder ${host}` : host]);
     rows.push(["RDP-Programm", "Windows: „Remotedesktopverbindung“, Mac/Handy: „Windows App“"]);
-    rows.push(["Verbindungsdatei", el("a", { href: "/kistengeist.rdp?code=" + encodeURIComponent(setupCode), download: "Kistengeist.rdp",
+    rows.push(["Verbindungsdatei", el("a", { href: "/kistengeist.rdp", download: "Kistengeist.rdp",
       text: "Kistengeist.rdp herunterladen (Ton, Mikrofon und Medientasten fertig eingestellt)" })]);
   }
   rows.push(["Erster Start", "Claude öffnet sich – melde dich mit deinem Claude-Konto an."]);
