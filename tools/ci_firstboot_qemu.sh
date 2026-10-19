@@ -79,7 +79,7 @@ depmod -b "$(dirname "$(dirname "$(dirname "$moddir")")")" "$kver" 2>/dev/null \
     || depmod -b "$(dirname "$(dirname "$moddir")")" "$kver"
 rm -rf initrd
 mkdir -p initrd/bin initrd/mods initrd/dev initrd/proc initrd/sys initrd/root
-cp bb/bin/busybox initrd/bin/busybox
+cp "$(find bb -name busybox -type f | head -n 1)" initrd/bin/busybox
 python3 - "$moddir" initrd/mods <<'PY' >initrd/mods/order
 import lzma, os, re, shutil, subprocess, sys
 moddir, out = sys.argv[1:]
