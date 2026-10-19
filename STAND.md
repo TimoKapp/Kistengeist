@@ -103,6 +103,9 @@ Speicherverwaltung, Ausschalten. Erweiterbar über Module, MCP und Plugins.
   Code und WLAN-Passwort auf der Boot-Partition geschwärzt und cloud-init abgeschaltet (finalize).
 - CI grün (19.10.2026, Lauf 5): echter Imager 2.0.12 schreibt Raspberry Pi OS Lite 2026-10-06 auf eine
   16-GB-VHDX; Boot-Partition mit user-data/network-config/meta-data/ds=nocloud geprüft.
+- CI „Erststart echt testen (QEMU)“: aktuelles Raspberry Pi OS Lite mit den vom Imager geschriebenen
+  Dateien bootet in QEMU (Debian-Kernel, Gerätebaum „Raspberry Pi 4“); Setup-Assistent nach ca. 7 Min.
+  erreichbar und verlangt den Code. Erster echter Hardwaretest (19.10.): Seite nicht erreichbar – Ursache offen.
 - Zwei unabhängige Prüfungen (Windows-Werkzeug, Sicherheit) durchgeführt und umgesetzt.
 - Noch offen: Test auf echter Hardware (Pi 4 + Windows 10/11, SmartScreen/Smart App Control; unsigniert,
   ein signierter EXE-Wrapper wäre die kundentaugliche Endstufe); Lizenz (LICENSE) durch den Besitzer;
