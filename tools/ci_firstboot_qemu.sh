@@ -144,7 +144,7 @@ sed -E 's#^( *url=")[^"]*(")#\1http://10.0.2.2:8000/install.sh\2#' "$art/user-da
 grep -q 'url="http://10.0.2.2:8000/install.sh"' user-data || { echo "::error::Installer-Adresse nicht gefunden"; exit 1; }
 sudo cp user-data "$art/network-config" "$art/meta-data" "$art/cmdline.txt" mnt/boot/
 echo "cmdline.txt (vom Imager): $(cat "$art/cmdline.txt")"
-echo "--- user-data (vom Imager)"; cat user-data
+echo "--- user-data (vom Imager)"; cat user-data; echo
 code="$(python3 - user-data <<'PY'
 import sys, yaml
 doc = yaml.safe_load(open(sys.argv[1]))
@@ -160,7 +160,7 @@ end
 
 # Kernel-Kommandozeile: die des Imagers, nur Konsole/Wurzel auf die virtuelle Maschine angepasst.
 append="console=ttyAMA0 root=/dev/vda2 rw net.ifnames=0"
-read -ra imager_args <"$art/cmdline.txt"
+read -ra imager_args <"$art/cmdline.txt" || true   # ohne Zeilenende am Dateiende
 for a in "${imager_args[@]}"; do
     case "$a" in console=*|root=*|init=*|quiet|splash|plymouth.*) ;; *) append="$append $a" ;; esac
 done
