@@ -1,5 +1,5 @@
 #!/bin/bash
-# Startet die Bestandteile der Claude-Oberfläche (von Openbox aufgerufen).
+# Startet die Bestandteile der Kistengeist-Oberfläche (von Openbox aufgerufen).
 # --panel-only: nur die Leiste neu erzeugen und starten (nach Änderung der Schriftgröße).
 
 setup=/etc/kistengeist/setup.conf
@@ -37,6 +37,12 @@ xsetroot -solid '#efe8dc' 2>/dev/null || true
 # Ohne Antwort geht es nach 2 Minuten mit 100 % weiter; die Leiste kommt danach mit passender Größe.
 /opt/kistengeist/bin/kistengeist-scale --first
 [ -f "$HOME/.Xresources" ] && xrdb -merge "$HOME/.Xresources" 2>/dev/null
+# Mauszeiger passend zur (eben gewählten) Größe für alles, was ab hier startet, und auf dem Hintergrund.
+eval "$(python3 /opt/kistengeist/lib/kistengeist_scale.py env 2>/dev/null)"
+export XCURSOR_THEME XCURSOR_SIZE
+dbus-update-activation-environment --systemd XCURSOR_THEME XCURSOR_SIZE 2>/dev/null \
+    || dbus-update-activation-environment XCURSOR_THEME XCURSOR_SIZE 2>/dev/null || true
+xsetroot -cursor_name left_ptr 2>/dev/null || true
 
 # Für das Terminal-Panel: Claude Desktop startet MCP-Server ohne DISPLAY/LANG.
 mkdir -p "$HOME/.config/kistengeist"

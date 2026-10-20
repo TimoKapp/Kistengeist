@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Schriftgröße/Skalierung der Claude-Oberfläche (100–200 %).
+"""Schriftgröße/Skalierung der Kistengeist-Oberfläche (100–200 %).
 
 Gespeichert in ~/.config/kistengeist/scale.conf (SCALE=200). Wirkt über
   - ~/.Xresources: Xft.dpi = 96·f (Claude Desktop, Chrome, VS Code, GTK lesen das), Mauszeiger

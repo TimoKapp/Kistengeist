@@ -548,7 +548,7 @@ function renderDone() {
     rows.push(["Verbindungsdatei", el("a", { href: "/kistengeist.rdp", download: "Kistengeist.rdp",
       text: "Kistengeist.rdp herunterladen (Ton, Mikrofon und Medientasten fertig eingestellt)" })]);
   }
-  rows.push(["Erster Start", "Claude öffnet sich – melde dich mit deinem Claude-Konto an."]);
+  rows.push(["Erster Start", "Kistengeist öffnet Claude Desktop – melde dich dort mit deinem Claude-Konto an."]);
   rows.push(["Zugangsdaten", "Datei „Zugangsdaten.txt“ im Benutzerordner (Ports, Adressen, Logins)"]);
   const dd = (v) => (typeof v === "string" ? el("dd", { text: v }) : el("dd", {}, v));
   $("done-info").replaceChildren(el("dl", {}, ...rows.flatMap(([k, v]) => [el("dt", { text: k }), dd(v)])));

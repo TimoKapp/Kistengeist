@@ -105,7 +105,11 @@ Speicherverwaltung, Ausschalten. Erweiterbar über Module, MCP und Plugins.
   16-GB-VHDX; Boot-Partition mit user-data/network-config/meta-data/ds=nocloud geprüft.
 - CI „Erststart echt testen (QEMU)“: aktuelles Raspberry Pi OS Lite mit den vom Imager geschriebenen
   Dateien bootet in QEMU (Debian-Kernel, Gerätebaum „Raspberry Pi 4“); Setup-Assistent nach ca. 7 Min.
-  erreichbar und verlangt den Code. Erster echter Hardwaretest (19.10.): Seite nicht erreichbar – Ursache offen.
+  erreichbar und verlangt den Code. Echter Hardwaretest (20.10.): Installation läuft durch.
+- Texte: Wo „Claude“ das System meinte, steht jetzt „Kistengeist“ (Assistent, Sitzung, RDP, Module);
+  Produktnamen (Claude Desktop, Claude Code, Claude-Konto, Rechtstexte) bleiben.
+- Schriftgröße: Mauszeiger wächst sofort mit (Umgebung neu, `xsetroot`); `kistengeist-launch` liest
+  Größe und Zeiger vor jedem Start von Claude Desktop neu (vorher erst nach Neuanmeldung).
 - Zwei unabhängige Prüfungen (Windows-Werkzeug, Sicherheit) durchgeführt und umgesetzt.
 - Noch offen: Test auf echter Hardware (Pi 4 + Windows 10/11, SmartScreen/Smart App Control; unsigniert,
   ein signierter EXE-Wrapper wäre die kundentaugliche Endstufe); Lizenz (LICENSE) durch den Besitzer;

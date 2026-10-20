@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Claude-Oberfläche: Benutzergruppen und Schlüsselbund.
+# Kistengeist-Oberfläche: Benutzergruppen und Schlüsselbund.
 
 for group in video render audio input plugdev netdev; do
     if [ "$CP_DRY_RUN" = "1" ] || getent group "$group" >/dev/null; then

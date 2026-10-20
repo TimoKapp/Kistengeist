@@ -7,11 +7,19 @@
 STORE=--password-store=gnome-libsecret
 # Schriftgröße (kistengeist-scale): Electron/Chrome lesen Xft.dpi über GTK; zur Sicherheit
 # zusätzlich den Faktor direkt übergeben (bei 100 % nichts).
-scale="$(python3 /opt/kistengeist/lib/kistengeist_scale.py get 2>/dev/null)"
-SCALE_ARGS=()
-case "$scale" in
-    125 | 150 | 175 | 200) SCALE_ARGS=("--force-device-scale-factor=$(printf '%d.%02d' $((scale / 100)) $((scale % 100)))") ;;
-esac
+# Mauszeiger ebenso, auch nach einer Änderung ohne Neuanmeldung (claude-loop liest beides
+# vor jedem Start neu).
+read_scale() {
+    local scale
+    scale="$(python3 /opt/kistengeist/lib/kistengeist_scale.py get 2>/dev/null)"
+    SCALE_ARGS=()
+    case "$scale" in
+        125 | 150 | 175 | 200) SCALE_ARGS=("--force-device-scale-factor=$(printf '%d.%02d' $((scale / 100)) $((scale % 100)))") ;;
+    esac
+    eval "$(python3 /opt/kistengeist/lib/kistengeist_scale.py env 2>/dev/null)"
+    export XCURSOR_THEME XCURSOR_SIZE
+}
+read_scale
 
 browser_cmd() {
     local b
@@ -39,6 +47,7 @@ case "${1:-}" in
         command -v claude-desktop >/dev/null || exit 0
         delay=3
         while true; do
+            read_scale
             started=$(date +%s)
             claude-desktop "$STORE" "${SCALE_ARGS[@]}"
             # Läuft die App kürzer als 30 s, Wartezeit erhöhen (max. 60 s),

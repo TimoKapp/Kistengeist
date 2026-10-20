@@ -78,7 +78,7 @@ Drei Wege führen zum selben Ergebnis:
    - **Module** (siehe unten)
    - **Passwort** für den Benutzer `claude` und Region
 6. **Installieren** – dauert je nach Internet 15–40 Minuten. Danach **Neustart**.
-7. Claude öffnet sich. Mit deinem Claude-Konto anmelden – fertig.
+7. Kistengeist öffnet Claude Desktop. Mit deinem Claude-Konto anmelden – fertig.
 
 ## Claude Code und Upload
 
@@ -168,8 +168,8 @@ Bei „Nur Fernzugriff“ und „Beides“ wählst du im Assistenten, wie du den
 ## Schriftgröße, Farben, Ton
 
 - **Schriftgröße** (100–200 %): wird bei der **ersten Anmeldung** abgefragt, später über
-  Ausschalten → „Schriftgröße“. Skaliert Schrift (Xft.dpi), Mauszeiger und die Leiste; Claude
-  übernimmt sie nach einem Neustart (wird angeboten).
+  Ausschalten → „Schriftgröße“. Skaliert Schrift (Xft.dpi), Mauszeiger (sofort) und die Leiste;
+  Claude Desktop übernimmt Schrift und Zeiger nach einem Neustart (wird angeboten).
 - **Farben:** Claude-Fenster weiß, Hintergrund links/rechts und Leiste in zartem Beige.
 - **Ton und Mikrofon per RDP** (Zugangsart „Nur RDP“): Sprachausgabe über die Lautsprecher des
   Arbeitsplatzes, dessen Mikrofon geht an den Pi (PipeWire + xrdp-Modul). In Windows:
@@ -187,9 +187,9 @@ Bei „Nur Fernzugriff“ und „Beides“ wählst du im Assistenten, wie du den
 
 | Zugangsart | Am Bildschirm | Per RDP |
 | --- | --- | --- |
-| Nur Bildschirm | Claude-Oberfläche, optional automatische Anmeldung | – |
+| Nur Bildschirm | Kistengeist-Oberfläche, optional automatische Anmeldung | – |
 | Nur RDP | – (kein Monitor nötig) | Eigene Sitzung; läuft nach dem Trennen weiter |
-| Beides | Claude-Oberfläche | Zeigt **denselben** Bildschirm wie am Pi (Spiegelung) |
+| Beides | Kistengeist-Oberfläche | Zeigt **denselben** Bildschirm wie am Pi (Spiegelung) |
 
 RDP-Programme: Windows „Remotedesktopverbindung“, Mac/iPhone/Android „Windows App“.
 Adresse: `kistengeist.local` oder die IP des Pi, Benutzer `claude`.
@@ -204,7 +204,7 @@ Spiegelung: Claude und Chrome dürfen nicht zweimal gleichzeitig mit demselben P
 
 | Modul | Standard | Zweck |
 | --- | --- | --- |
-| Grundsystem, Claude-Oberfläche, Claude Desktop, Abschluss | immer | Basis |
+| Grundsystem, Kistengeist-Oberfläche, Claude Desktop, Abschluss | immer | Basis |
 | Bildschirm am Pi / Fernzugriff per RDP | je Zugangsart | Zugang |
 | Google Chrome | an | Browser mit Erweiterungen (Fallback: Chromium) |
 | Claude in Chrome | an | Erweiterung wird automatisch installiert |
@@ -221,7 +221,7 @@ Spiegelung: Claude und Chrome dürfen nicht zweimal gleichzeitig mit demselben P
 | Speicherverwaltung | an | Belegung, Aufräumen, USB auswerfen, Warnung ab 90 % |
 | Speicherkarte schonen | an | weniger Schreibzugriffe (Protokolle begrenzt, zram) |
 | Energiesparen | an | Bildschirm nach 10 Minuten aus |
-| Automatische Updates | an | System, Claude, Chrome (ohne Auto-Neustart) |
+| Automatische Updates | an | System, Claude Desktop, Chrome (ohne Auto-Neustart) |
 | Firewall | an | nur RDP/SSH eingehend erlaubt (ab Neustart) |
 | SSH-Zugang | aus | Kommandozeile übers Netzwerk |
 | Bluetooth abschalten | aus | spart etwas Strom |
@@ -239,7 +239,7 @@ Bitte nach dem ersten Start prüfen und Ergebnisse melden:
 - [ ] `http://kistengeist.local` öffnet den Assistenten (sonst IP-Adresse)
 - [ ] Ohne Kabel/WLAN erscheint das WLAN „Kistengeist-Setup“; WLAN-Wechsel im Assistenten klappt
 - [ ] Installation läuft durch (bei Fehler: Protokoll im Assistenten kopieren)
-- [ ] Nach Neustart startet Claude im Vollbild, Anmeldung bleibt nach erneutem Neustart erhalten
+- [ ] Nach Neustart startet Claude Desktop im Vollbild, Anmeldung bleibt nach erneutem Neustart erhalten
 - [ ] Leiste: Browser, Dateien, Speicher, Ausschalten funktionieren
 - [ ] „Code“ öffnet in Claude den Code-Bereich mit Ordner `Projekte` (Sicherheitsabfrage bestätigen)
 - [ ] „Handy“: bei Claude Code anmelden; Pi erscheint in der Claude-App unter Code als „Kistengeist“

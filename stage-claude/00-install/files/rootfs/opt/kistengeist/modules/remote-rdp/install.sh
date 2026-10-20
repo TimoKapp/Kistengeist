@@ -47,14 +47,14 @@ if [ "$mode" = "rdp" ]; then
         cp_log "xrdp: DRMDevice abgeschaltet (Software-Rendering)."
     fi
 
-    # Jede RDP-Anmeldung startet die Claude-Oberfläche.
+    # Jede RDP-Anmeldung startet die Kistengeist-Oberfläche.
     startwm="${CP_ROOT}/etc/xrdp/startwm.sh"
     if [ -f "$startwm" ] && [ ! -f "${startwm}.kistengeist.orig" ]; then
         cp "$startwm" "${startwm}.kistengeist.orig"
     fi
     cp_write /etc/xrdp/startwm.sh 0755 <<'EOF'
 #!/bin/sh
-# Von Kistengeist erzeugt: startet die Claude-Oberfläche in der RDP-Sitzung.
+# Von Kistengeist erzeugt: startet die Kistengeist-Oberfläche in der RDP-Sitzung.
 if [ -r /etc/profile ]; then
     . /etc/profile
 fi

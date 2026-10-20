@@ -31,7 +31,7 @@ jobs:
       - name: Shell-Lint
         run: |
           mapfile -t scripts < <(grep -rlE '^#!/bin/bash|shell=bash' stage-claude)
-          shellcheck -x -S warning "${scripts[@]}" install.sh tools/ci_installer.sh tools/ci_installer_inner.sh tools/ci_cloudinit_check.sh tools/ci_raspios_check.sh
+          shellcheck -x -S warning "${scripts[@]}" install.sh tools/ci_installer.sh tools/ci_installer_inner.sh tools/ci_cloudinit_check.sh tools/ci_raspios_check.sh tools/ci_firstboot_qemu.sh
       - name: Tests (inkl. Installer-Probelauf aller Zugangsarten)
         run: pytest -q
 

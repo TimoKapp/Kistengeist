@@ -1,5 +1,5 @@
 [Desktop Entry]
 Name=Kistengeist
-Comment=Claude-Oberfläche
+Comment=Kistengeist-Oberfläche
 Exec=/opt/kistengeist/bin/kistengeist-session
 Type=Application

@@ -56,3 +56,56 @@ def test_xrdp_sound_channels_enabled():
     assert "rdpsnd=true" in out and "drdynvc=true" in out and "rdpsnd=false" not in out
     out2 = xrdp_ini.rewrite("[Globals]\nport=3389\n", "rdp")
     assert "[Channels]" in out2 and "rdpsnd=true" in out2
+
+
+def _run_script(tmp_path, name, args, stubs, check=True):
+    """Skript aus bin/ mit Stub-Programmen ausführen; /opt/kistengeist zeigt auf den Quellbaum."""
+    import os
+    import subprocess
+    stub_dir = tmp_path / "stubs"
+    stub_dir.mkdir(exist_ok=True)
+    log = tmp_path / "calls.log"
+    for prog, body in stubs.items():
+        p = stub_dir / prog
+        p.write_text(f'#!/bin/bash\necho "{prog} $* XCURSOR_SIZE=$XCURSOR_SIZE" >>"{log}"\n{body}\n')
+        p.chmod(0o755)
+    src = open(f"{CP_HOME}/bin/{name}", encoding="utf-8").read().replace("/opt/kistengeist", CP_HOME)
+    script = tmp_path / name
+    script.write_text(src)
+    home = tmp_path / "home"
+    home.mkdir(exist_ok=True)
+    env = {**os.environ, "HOME": str(home), "PATH": f"{stub_dir}:{os.environ['PATH']}", "XCURSOR_SIZE": "24"}
+    subprocess.run(["bash", str(script), *args], env=env, check=check, timeout=30)
+    return log.read_text() if log.exists() else ""
+
+
+def test_scale_change_resizes_cursor_at_once(tmp_path):
+    calls = _run_script(tmp_path, "kistengeist-scale", [], {
+        "zenity": 'case "$*" in *--list*) echo "150 %";; *) exit 1;; esac',
+        "xrdb": "", "xsetroot": "", "dbus-update-activation-environment": "", "tint2": "", "pkill": "",
+    })
+    assert "xsetroot -cursor_name left_ptr XCURSOR_SIZE=36" in calls
+    assert "Xcursor.size: 36" in (tmp_path / "home/.Xresources").read_text()
+    assert "Claude Desktop jetzt neu starten?" in calls and "Mauszeiger" in calls
+
+
+def test_launch_uses_current_cursor_and_scale(tmp_path):
+    (tmp_path / "home/.config/kistengeist").mkdir(parents=True)
+    (tmp_path / "home/.config/kistengeist/scale.conf").write_text("SCALE=200\n")
+    calls = _run_script(tmp_path, "kistengeist-launch", ["claude"], {"claude-desktop": ""})
+    assert "--force-device-scale-factor=2.00" in calls and "XCURSOR_SIZE=48" in calls
+
+
+def test_claude_loop_rereads_scale_before_each_start(tmp_path):
+    conf = tmp_path / "home/.config/kistengeist/scale.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text("SCALE=100\n")
+    # Erster Start: Größe auf 150 % ändern; die Pause danach beendet die Schleife.
+    calls = _run_script(tmp_path, "kistengeist-launch", ["claude-loop"], {
+        "claude-desktop": f'[ -f "{tmp_path}/once" ] || {{ touch "{tmp_path}/once"; echo SCALE=150 >"{conf}"; }}',
+        "sleep": f'[ -f "{tmp_path}/twice" ] && kill $PPID; touch "{tmp_path}/twice"',
+    }, check=False)
+    starts = [ln for ln in calls.splitlines() if ln.startswith("claude-desktop")]
+    assert len(starts) == 2
+    assert "XCURSOR_SIZE=24" in starts[0] and "scale-factor" not in starts[0]
+    assert "XCURSOR_SIZE=36" in starts[1] and "--force-device-scale-factor=1.50" in starts[1]

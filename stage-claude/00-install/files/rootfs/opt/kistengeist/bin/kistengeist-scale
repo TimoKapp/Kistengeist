@@ -1,7 +1,7 @@
 #!/bin/bash
-# Schriftgröße der Claude-Oberfläche wählen (bei der ersten Anmeldung und über das Ausschalten-Menü).
-#   kistengeist-scale            Auswahl zeigen, anwenden, Leiste neu laden, Claude-Neustart anbieten
-#   kistengeist-scale --first    nur, wenn noch nie gewählt (vor dem Start von Claude, ohne Neustart)
+# Schriftgröße der Kistengeist-Oberfläche wählen (bei der ersten Anmeldung und über das Ausschalten-Menü).
+#   kistengeist-scale            Auswahl zeigen, anwenden, Leiste neu laden, Mauszeiger anpassen, Neustart von Claude Desktop anbieten
+#   kistengeist-scale --first    nur, wenn noch nie gewählt (vor dem Start von Claude Desktop, ohne Neustart)
 set -u
 lib=/opt/kistengeist/lib/kistengeist_scale.py
 current="$(python3 "$lib" get)"
@@ -33,12 +33,19 @@ case "$choice" in
 esac
 python3 "$lib" set "$choice"
 xrdb -merge "$HOME/.Xresources" 2>/dev/null || true
+# Mauszeiger sofort in der neuen Größe: Umgebung für alles, was ab jetzt startet, und den
+# Zeiger auf dem Hintergrund neu setzen.
+eval "$(python3 "$lib" env 2>/dev/null)"
+export XCURSOR_THEME XCURSOR_SIZE
+dbus-update-activation-environment --systemd XCURSOR_THEME XCURSOR_SIZE 2>/dev/null \
+    || dbus-update-activation-environment XCURSOR_THEME XCURSOR_SIZE 2>/dev/null || true
+xsetroot -cursor_name left_ptr 2>/dev/null || true
 [ "${1:-}" = "--first" ] && exit 0
 
 # Leiste mit neuer Größe neu starten
 /opt/kistengeist/bin/kistengeist-autostart --panel-only
 if zenity --question --title "Schriftgröße" --width 380 \
-    --text "Claude übernimmt die neue Größe nach einem Neustart (der Mauszeiger nach Ab- und Anmelden). Claude jetzt neu starten?" 2>/dev/null; then
+    --text "Leiste und Mauszeiger haben die neue Größe. Claude Desktop und bereits geöffnete Programme übernehmen sie nach einem Neustart. Claude Desktop jetzt neu starten?" 2>/dev/null; then
     # Nur eigene Prozesse; die Startschleife in kistengeist-autostart startet Claude gleich wieder.
     pkill -u "$(id -u)" -f '(^|/)claude-desktop( |$)' 2>/dev/null || true
 fi
